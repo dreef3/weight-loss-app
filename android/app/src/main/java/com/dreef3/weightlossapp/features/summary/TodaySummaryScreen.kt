@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,10 +16,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -29,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -112,61 +118,72 @@ fun TodaySummaryScreen(
     onOpenTrends: () -> Unit,
     onOpenManualEntry: (FoodEntry) -> Unit,
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        state.summary?.let { summary ->
-            SummaryCards(
-                summary = summary,
-                onOpenTrends = onOpenTrends,
-            )
-        }
-        Button(
-            onClick = onTakePhoto,
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp),
-        ) {
-            Text("Take food photo", style = MaterialTheme.typography.titleMedium)
-        }
-        LazyColumn(
-            modifier = Modifier.weight(1f),
+                .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                state.summary?.let { summary ->
-                    OverBudgetNotice(summary.remainingCalories < 0)
-                }
+            state.summary?.let { summary ->
+                SummaryCards(
+                    summary = summary,
+                    onOpenTrends = onOpenTrends,
+                )
             }
-            item {
-                state.errorMessage?.let { Text(it) }
-            }
-            if (state.processingCount > 0) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp),
+            ) {
                 item {
-                    StatusCard(
-                        title = "Processing in background",
-                        body = "${state.processingCount} photo(s) are still being estimated. You can close the app and come back later.",
-                    )
+                    state.summary?.let { summary ->
+                        OverBudgetNotice(summary.remainingCalories < 0)
+                    }
                 }
-            }
-            if (state.manualEntries.isNotEmpty()) {
                 item {
-                    Text("Needs manual calories", style = MaterialTheme.typography.titleLarge)
+                    state.errorMessage?.let { Text(it) }
                 }
-                items(state.manualEntries, key = { it.id }) { entry ->
-                    ManualEntryCard(entry = entry, onOpenManualEntry = { onOpenManualEntry(entry) })
+                if (state.processingCount > 0) {
+                    item {
+                        StatusCard(
+                            title = "Processing in background",
+                            body = "${state.processingCount} photo(s) are still being estimated. You can close the app and come back later.",
+                        )
+                    }
                 }
-            }
-            if (state.isEmpty && state.processingCount == 0 && state.manualEntries.isEmpty()) {
-                item {
-                    SummaryEmptyState()
+                if (state.manualEntries.isNotEmpty()) {
+                    item {
+                        Text("Needs manual calories", style = MaterialTheme.typography.titleLarge)
+                    }
+                    items(state.manualEntries, key = { it.id }) { entry ->
+                        ManualEntryCard(entry = entry, onOpenManualEntry = { onOpenManualEntry(entry) })
+                    }
+                }
+                if (state.isEmpty && state.processingCount == 0 && state.manualEntries.isEmpty()) {
+                    item {
+                        SummaryEmptyState()
+                    }
                 }
             }
         }
+        ExtendedFloatingActionButton(
+            onClick = onTakePhoto,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 12.dp),
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.AddAPhoto,
+                    contentDescription = null,
+                )
+            },
+            text = { Text("Take food photo") },
+        )
     }
 }
 
