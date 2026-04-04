@@ -15,19 +15,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.media.ModelDescriptors
 import com.dreef3.weightlossapp.features.chat.CoachChatScreenRoute
 import com.dreef3.weightlossapp.features.capture.FoodCaptureScreenRoute
 import com.dreef3.weightlossapp.features.onboarding.OnboardingScreenRoute
 import com.dreef3.weightlossapp.features.onboarding.ProfileEditScreen
 import com.dreef3.weightlossapp.features.summary.TodaySummaryScreenRoute
+import com.dreef3.weightlossapp.features.trends.MealDebugScreenRoute
 import com.dreef3.weightlossapp.features.trends.TrendsScreenRoute
 
 private data class BottomDestination(
@@ -71,10 +76,10 @@ fun AppNavHost(
         return
     }
 
-    val startDestination = if (state.hasProfile) AppDestinations.Home else AppDestinations.Onboarding
+    val startDestination = if (state.isSetupComplete) AppDestinations.Home else AppDestinations.Onboarding
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
-    val showBottomBar = state.hasProfile && currentDestination?.route in BottomDestinations.map { it.route }
+    val showBottomBar = state.isSetupComplete && currentDestination?.route in BottomDestinations.map { it.route }
     fun navigateToTopLevel(route: String) {
         navController.navigate(route) {
             launchSingleTop = true
@@ -121,6 +126,12 @@ fun AppNavHost(
                 TodaySummaryScreenRoute(
                     container = AppContainer.instance,
                     onNavigateToTrends = { navigateToTopLevel(AppDestinations.Trends) },
+                    onOpenHistoricalChat = { sessionId ->
+                        navController.navigate(AppDestinations.historicalChat(sessionId))
+                    },
+                    onOpenMealDebug = { entryId ->
+                        navController.navigate(AppDestinations.mealDebug(entryId))
+                    },
                 )
             }
             composable(AppDestinations.Capture) {
@@ -132,17 +143,60 @@ fun AppNavHost(
             composable(AppDestinations.Trends) {
                 TrendsScreenRoute(
                     container = AppContainer.instance,
+                    onOpenHistoricalChat = { sessionId ->
+                        navController.navigate(AppDestinations.historicalChat(sessionId))
+                    },
+                    onOpenMealDebug = { entryId ->
+                        navController.navigate(AppDestinations.mealDebug(entryId))
+                    },
                 )
             }
             composable(AppDestinations.Chat) {
+                val coachReady = AppContainer.instance.modelStorage.hasUsableModel(ModelDescriptors.gemma)
+                if (coachReady) {
+                    CoachChatScreenRoute(
+                        container = AppContainer.instance,
+                    )
+                } else {
+                    Text(
+                        text = "Coach will unlock after Gemma finishes downloading on Wi‑Fi.",
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
+            composable(
+                route = "${AppDestinations.ChatHistory}/{sessionId}",
+                arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
+            ) { backStack ->
+                val sessionId = backStack.arguments?.getLong("sessionId") ?: return@composable
                 CoachChatScreenRoute(
                     container = AppContainer.instance,
+                    sessionId = sessionId,
+                    readOnly = true,
+                )
+            }
+            composable(
+                route = "${AppDestinations.MealDebug}/{entryId}",
+                arguments = listOf(navArgument("entryId") { type = NavType.LongType }),
+            ) { backStack ->
+                val entryId = backStack.arguments?.getLong("entryId") ?: return@composable
+                MealDebugScreenRoute(
+                    container = AppContainer.instance,
+                    entryId = entryId,
                 )
             }
             composable(AppDestinations.Profile) {
                 ProfileEditScreen(
                     container = AppContainer.instance,
                     onBack = { navController.popBackStack() },
+                    onResetToOnboarding = {
+                        navController.navigate(AppDestinations.Onboarding) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
         }

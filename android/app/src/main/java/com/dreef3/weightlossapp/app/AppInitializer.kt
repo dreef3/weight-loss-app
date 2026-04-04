@@ -2,7 +2,11 @@ package com.dreef3.weightlossapp.app
 
 import android.util.Log
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.media.ModelDescriptors
+import com.dreef3.weightlossapp.app.network.NetworkConnectionType
+import com.dreef3.weightlossapp.inference.CalorieEstimationModel
 import java.util.concurrent.Executors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
 object AppInitializer {
@@ -17,32 +21,25 @@ object AppInitializer {
             runCatching {
                 container.photoStorage.ensureDirectories()
                 container.modelStorage.modelDirectory.mkdirs()
-                container.modelStorage.cleanupIncompleteModelFiles()
-                container.modelStorage.logState()
-                while (!container.modelStorage.hasUsableModel()) {
-                    val result = runBlocking {
-                        container.modelDownloader.downloadFrom(DEBUG_MODEL_URL)
-                    }
-                    if (result.isSuccess) {
-                        Log.i(TAG, "Startup model download succeeded")
-                        break
-                    }
-                    Log.w(TAG, "Startup model download failed, retrying in ${RETRY_DELAY_MS}ms", result.exceptionOrNull())
-                    Thread.sleep(RETRY_DELAY_MS)
+                container.modelStorage.cleanupIncompleteModelFiles(ModelDescriptors.gemma)
+                container.modelStorage.logState(tag = TAG, model = ModelDescriptors.gemma)
+                runBlocking { container.preferences.setCalorieEstimationModel(CalorieEstimationModel.Gemma) }
+                val onboardingComplete = runBlocking { container.preferences.hasCompletedOnboarding.first() }
+                if (onboardingComplete &&
+                    !container.modelStorage.hasUsableModel(ModelDescriptors.gemma) &&
+                    container.networkConnectionMonitor.currentConnectionType() == NetworkConnectionType.Wifi
+                ) {
+                    container.modelDownloadRepository.enqueueIfNeeded(ModelDescriptors.gemma)
+                    Log.i(TAG, "Scheduled Gemma background download on Wi-Fi")
                 }
-                val warmUpResult = runBlocking {
-                    container.foodEstimationEngine.warmUp()
+                if (!container.modelStorage.hasUsableModel(ModelDescriptors.gemma)) {
+                    Log.i(TAG, "Skipped model warm-up because Gemma is not ready yet")
+                    return@runCatching
                 }
-                if (warmUpResult.isSuccess) {
-                    Log.i(TAG, "Startup model warm-up succeeded")
-                } else {
-                    Log.w(TAG, "Startup model warm-up failed", warmUpResult.exceptionOrNull())
-                }
+                Log.i(TAG, "Skipping startup Gemma warm-up for now")
             }
         }
     }
 
     private const val TAG = "AppInitializer"
-    private const val DEBUG_MODEL_URL = "http://192.168.0.168:18080/gemma-4-E2B-it.litertlm"
-    private const val RETRY_DELAY_MS = 5_000L
 }

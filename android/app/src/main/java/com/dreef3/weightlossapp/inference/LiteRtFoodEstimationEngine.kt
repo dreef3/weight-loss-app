@@ -3,6 +3,7 @@ package com.dreef3.weightlossapp.inference
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.domain.model.ConfidenceState
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
@@ -32,43 +33,63 @@ class LiteRtFoodEstimationEngine(
     private val modelFile: File,
 ) : FoodEstimationEngine {
     private val engineMutex = Mutex()
+    private val inferenceMutex = Mutex()
     private var engine: Engine? = null
 
     override suspend fun estimate(request: FoodEstimationRequest): Result<FoodEstimationResult> =
         withContext(Dispatchers.Default) {
-            runCatching {
-            logModelLookup("estimate-start")
-            if (!modelFile.exists() || modelFile.length() == 0L) {
-                Log.e(TAG, "Model file missing at ${modelFile.absolutePath}")
-                throw FoodEstimationException(FoodEstimationError.ModelUnavailable)
-            }
+            inferenceMutex.withLock {
+                runCatching {
+                    logModelLookup("estimate-start")
+                    if (!modelFile.exists() || modelFile.length() == 0L) {
+                        Log.e(TAG, "Model file missing at ${modelFile.absolutePath}")
+                        throw FoodEstimationException(FoodEstimationError.ModelUnavailable)
+                    }
 
-            val bitmap = BitmapFactory.decodeFile(request.imagePath)
-                ?: throw FoodEstimationException(FoodEstimationError.UnreadableImage)
+                    val bitmap = BitmapFactory.decodeFile(request.imagePath)
+                        ?: throw FoodEstimationException(FoodEstimationError.UnreadableImage)
 
-            val estimationResult = try {
-                val activeEngine = getOrCreateEngine()
-                var submittedEstimate: ToolFoodEstimate? = null
-                val toolProviders = listOf(
-                    tool(
-                        FoodEstimationTools { estimate ->
-                            submittedEstimate = estimate
-                        },
-                    ),
-                )
-                val raw = activeEngine.createToolConversation(toolProviders).use { conversation ->
-                    conversation.awaitResponse(bitmap = bitmap)
+                    val estimationResult = try {
+                        val activeEngine = getOrCreateEngine()
+                        var submittedEstimate: ToolFoodEstimate? = null
+                        val toolProviders = listOf(
+                            tool(
+                                FoodEstimationTools { estimate ->
+                                    submittedEstimate = estimate
+                                },
+                            ),
+                        )
+                        val prompt = buildPrompt(request)
+                        debugLog("estimate prompt chars=${prompt.length} tools=${toolProviders.size}")
+                        val response = activeEngine.createToolConversation(toolProviders).use { conversation ->
+                            conversation.awaitResponse(bitmap = bitmap, prompt = prompt)
+                        }
+                        debugLog("estimate raw final=${response.responseText.take(400)}")
+                        submittedEstimate?.let {
+                            debugLog("tool result description=${it.description} calories=${it.calories}")
+                        }
+                        submittedEstimate?.toResult(response.debugTrace, request.preferredDescription) ?: run {
+                            val parsed = FoodEstimationTextParser.parse(response.responseText)
+                            parsed.copy(
+                                detectedFoodLabel = request.preferredDescription?.trim()?.ifBlank { null }
+                                    ?: parsed.detectedFoodLabel,
+                                debugInteractionLog = response.debugTrace,
+                            )
+                        }
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: FoodEstimationException) {
+                        throw exception
+                    } catch (exception: Exception) {
+                        Log.e(TAG, "estimate failed", exception)
+                        throw FoodEstimationException(
+                            error = FoodEstimationError.EstimationFailed,
+                            debugInteractionLog = exception.stackTraceToString(),
+                        )
+                    }
+
+                    estimationResult
                 }
-                submittedEstimate?.toResult() ?: parseResponse(raw)
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: FoodEstimationException) {
-                throw exception
-            } catch (_: Exception) {
-                throw FoodEstimationException(FoodEstimationError.EstimationFailed)
-            }
-
-            estimationResult
             }
         }
 
@@ -88,6 +109,8 @@ class LiteRtFoodEstimationEngine(
                             Content.Text(
                                 """
                                 You analyze a food photo and must call submitFoodEstimate exactly once.
+                                Reason carefully about what the food is and its portion size before deciding calories,
+                                but do that reasoning internally.
                                 The description must be one short line.
                                 Calories must be a single integer estimate.
                                 Do not answer in free-form text when the tool is available.
@@ -171,28 +194,60 @@ class LiteRtFoodEstimationEngine(
         Log.i(TAG, "stage=$stage parentChildren=$children")
     }
 
-    private suspend fun Conversation.awaitResponse(bitmap: Bitmap): String =
+    private suspend fun Conversation.awaitResponse(bitmap: Bitmap, prompt: String): ConversationTrace =
         suspendCancellableCoroutine { continuation ->
             val builder = StringBuilder()
+            val trace = StringBuilder()
+            var lastChannel: String? = null
+            trace.appendLine("Prompt:")
+            trace.appendLine(prompt.trimEnd())
+            trace.appendLine()
             sendMessageAsync(
                 Contents.of(
                     listOf(
                         Content.ImageBytes(bitmap.toPngByteArray()),
-                        Content.Text(PROMPT),
+                        Content.Text(prompt),
                     ),
                 ),
                 object : MessageCallback {
                     override fun onMessage(message: Message) {
+                        message.channels["thought"]?.takeIf { it.isNotBlank() }?.let { thought ->
+                            debugLog("thought chunk=${thought.take(500)}")
+                            if (lastChannel != "thought") {
+                                if (trace.isNotEmpty() && !trace.endsWith("\n\n")) {
+                                    trace.appendLine()
+                                }
+                                trace.appendLine("[thought]")
+                                lastChannel = "thought"
+                            }
+                            trace.appendLine(thought)
+                        }
+                        debugLog("text chunk=${message.toString().take(500)}")
+                        if (lastChannel != "text") {
+                            if (trace.isNotEmpty() && !trace.endsWith("\n\n")) {
+                                trace.appendLine()
+                            }
+                            trace.appendLine("[text]")
+                            lastChannel = "text"
+                        }
+                        trace.appendLine(message.toString())
                         builder.append(message.toString())
                     }
 
                     override fun onDone() {
+                        debugLog("onDone totalLength=${builder.length}")
                         if (continuation.isActive) {
-                            continuation.resume(builder.toString())
+                            continuation.resume(
+                                ConversationTrace(
+                                    responseText = builder.toString(),
+                                    debugTrace = trace.toString(),
+                                ),
+                            )
                         }
                     }
 
                     override fun onError(throwable: Throwable) {
+                        Log.e(TAG, "conversation onError", throwable)
                         if (!continuation.isActive) return
                         if (throwable is CancellationException) {
                             continuation.cancel(throwable)
@@ -201,64 +256,18 @@ class LiteRtFoodEstimationEngine(
                         }
                     }
                 },
-                emptyMap(),
+                mapOf("enable_thinking" to "true"),
             )
 
             continuation.invokeOnCancellation {
                 runCatching { cancelProcess() }
             }
-        }
-
-    private fun parseResponse(raw: String): FoodEstimationResult {
-        val descriptionMatch = Regex("""(?im)^description\s*:\s*(.+)$""").find(raw)
-        val caloriesMatch = Regex("""(?im)^calories\s*:\s*(\d{1,5})$""").find(raw)
-        if (caloriesMatch != null) {
-            return FoodEstimationResult(
-                estimatedCalories = caloriesMatch.groupValues[1].toInt().coerceAtLeast(0),
-                confidenceState = ConfidenceState.High,
-                detectedFoodLabel = descriptionMatch?.groupValues?.get(1)?.trim()?.ifBlank { null },
-                confidenceNotes = null,
-                detectedItems = descriptionMatch?.groupValues?.get(1)?.trim()?.let(::listOf) ?: emptyList(),
-            )
-        }
-
-        val directCalories = Regex("""\b\d{1,5}\b""").find(raw)?.value?.toIntOrNull()
-        if (directCalories != null) {
-            return FoodEstimationResult(
-                estimatedCalories = directCalories.coerceAtLeast(0),
-                confidenceState = ConfidenceState.High,
-                detectedFoodLabel = null,
-                confidenceNotes = null,
-                detectedItems = emptyList(),
-            )
-        }
-
-        val values = raw.lineSequence()
-            .mapNotNull { line ->
-                val splitAt = line.indexOf('=')
-                if (splitAt <= 0) {
-                    null
-                } else {
-                    line.substring(0, splitAt).trim() to line.substring(splitAt + 1).trim()
-                }
-            }
-            .toMap()
-
-        val label = values["food"].orEmpty().ifBlank { "unknown meal" }
-        val calories = values["calories"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
-        val confidence = when (values["confidence"]?.lowercase()) {
-            "high" -> ConfidenceState.High
-            else -> ConfidenceState.NonHigh
-        }
-
-        return FoodEstimationResult(
-            estimatedCalories = calories,
-            confidenceState = confidence,
-            detectedFoodLabel = label,
-            confidenceNotes = values["notes"],
-            detectedItems = listOf(label),
-        )
     }
+
+    private data class ConversationTrace(
+        val responseText: String,
+        val debugTrace: String,
+    )
 
     private fun Bitmap.toPngByteArray(): ByteArray {
         val stream = ByteArrayOutputStream()
@@ -266,14 +275,40 @@ class LiteRtFoodEstimationEngine(
         return stream.toByteArray()
     }
 
-    private fun ToolFoodEstimate.toResult(): FoodEstimationResult =
-        FoodEstimationResult(
+    private fun ToolFoodEstimate.toResult(
+        rawTrace: String,
+        preferredDescription: String?,
+    ): FoodEstimationResult {
+        val finalDescription = preferredDescription?.trim()?.ifBlank { null } ?: description.ifBlank { null }
+        return FoodEstimationResult(
             estimatedCalories = calories,
             confidenceState = ConfidenceState.High,
-            detectedFoodLabel = description.ifBlank { null },
+            detectedFoodLabel = finalDescription,
             confidenceNotes = null,
-            detectedItems = description.ifBlank { null }?.let(::listOf) ?: emptyList(),
+            detectedItems = finalDescription?.let(::listOf) ?: emptyList(),
+            debugInteractionLog = buildString {
+                appendLine(rawTrace.trimEnd())
+                appendLine()
+                appendLine("[tool]")
+                appendLine("Description: ${finalDescription ?: description}")
+                appendLine("Calories: $calories")
+            },
         )
+    }
+
+    private fun buildPrompt(request: FoodEstimationRequest): String = buildString {
+        appendLine("Look carefully at this food photo and estimate calories.")
+        request.userContext?.trim()?.takeIf { it.isNotBlank() }?.let { context ->
+            appendLine("Additional user context about the food: $context")
+        }
+        request.preferredDescription?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+            appendLine("Use this exact food description in your final estimate: $description")
+        }
+        appendLine("Think about the ingredients and portion size before answering, but do not show that reasoning.")
+        appendLine("Output exactly two lines and no extra text.")
+        appendLine("First line must start with Description:")
+        append("Second line must start with Calories:")
+    }
 
     companion object {
         private const val TAG = "LiteRtFoodEngine"
@@ -281,16 +316,16 @@ class LiteRtFoodEstimationEngine(
         private const val DEFAULT_TOP_K = 64
         private const val DEFAULT_TOP_P = 0.95
         private const val DEFAULT_TEMPERATURE = 1.0
-        private const val PROMPT = """
-            Estimate the food in this photo.
-            Output exactly two lines and no extra text.
-            description: one short line describing the food
-            calories: single integer estimated calories
-            It is ok if this is just a guess.
-        """
+    }
+
+    private fun debugLog(message: String) {
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, message)
+        }
     }
 }
 
 class FoodEstimationException(
     val error: FoodEstimationError,
+    val debugInteractionLog: String? = null,
 ) : IllegalStateException(error.toString())

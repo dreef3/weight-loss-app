@@ -8,5 +8,7 @@ interface FoodEntryRepository {
     fun observeEntriesFor(date: LocalDate): Flow<List<FoodEntry>>
     fun observeEntriesInRange(startDate: LocalDate, endDate: LocalDate): Flow<List<FoodEntry>>
     fun observeAllEntries(): Flow<List<FoodEntry>>
+    suspend fun getEntry(entryId: Long): FoodEntry?
     suspend fun upsert(entry: FoodEntry): Long
+    suspend fun delete(entry: FoodEntry)
 }

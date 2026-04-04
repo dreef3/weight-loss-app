@@ -1,6 +1,7 @@
 package com.dreef3.weightlossapp.chat
 
 import android.util.Log
+import com.dreef3.weightlossapp.BuildConfig
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -27,6 +28,7 @@ import kotlin.coroutines.resumeWithException
 
 class LiteRtDietChatEngine(
     private val modelFile: File,
+    private val correctionService: DietEntryCorrectionService,
 ) : DietChatEngine {
     private val engineMutex = Mutex()
     private var engine: Engine? = null
@@ -37,26 +39,38 @@ class LiteRtDietChatEngine(
         snapshot: DietChatSnapshot,
     ): Result<String> = withContext(Dispatchers.Default) {
         runCatching {
+            debugLog(
+                "sendMessage start message=${message.take(160)} historyCount=${history.size} " +
+                    "entryCount=${snapshot.entries.size} budget=${snapshot.todayBudgetCalories}",
+            )
             if (!modelFile.exists() || modelFile.length() == 0L) {
                 throw IllegalStateException("Model unavailable")
             }
             val activeEngine = getOrCreateEngine()
             val tools = listOf(
                 tool(
-                    DietEntryTools { snapshot },
+                    DietEntryTools(
+                        snapshotProvider = { snapshot },
+                        correctionService = correctionService,
+                    ),
                 ),
             )
+            debugLog("tools registered count=${tools.size}")
             val prompt = buildPrompt(history, message, snapshot)
+            debugLog("prompt built chars=${prompt.length}")
             activeEngine.createConversationWithTools(tools).use { conversation ->
                 conversation.awaitTextResponse(prompt).trim().ifBlank {
                     "I couldn't produce a useful answer yet. Please try again."
                 }
             }
+        }.onFailure { throwable ->
+            Log.e(TAG, "sendMessage failed", throwable)
         }
     }
 
     private suspend fun getOrCreateEngine(): Engine = engineMutex.withLock {
         engine?.let { return it }
+        debugLog("initializing engine modelPath=${modelFile.absolutePath} size=${modelFile.length()}")
         val engineConfig = EngineConfig(
             modelPath = modelFile.absolutePath,
             backend = Backend.GPU(),
@@ -68,6 +82,7 @@ class LiteRtDietChatEngine(
         return Engine(engineConfig).also { created ->
             created.initialize()
             engine = created
+            debugLog("engine initialized")
         }
     }
 
@@ -92,6 +107,30 @@ class LiteRtDietChatEngine(
                                 realistic next steps over perfection.
                                 Use the available tools when advice depends on the user's logged meals
                                 or calorie history.
+                                When the user corrects a saved meal, use tools to find the entry and
+                                call correctEntry instead of merely suggesting the change.
+                                When the user tells you about an unlogged meal and gives enough
+                                information to save it, call logFoodEntry instead of only replying
+                                in text. If calories are missing or ambiguous, ask a short follow-up
+                                question instead of guessing.
+                                The meal name in the user's own message is already a complete
+                                value for logFoodEntry.mealName. Do not ask for a separate,
+                                clearer, or more specific description when the user already named
+                                the meal, for example 'Mac Menu', 'potato burek', or
+                                'yogurt with berries'.
+                                If the user gives both a meal name and calories, call
+                                logFoodEntry immediately.
+                                If the user asks you to estimate calories for a named meal in text,
+                                estimate them first, then call logFoodEntry with that same
+                                user-provided meal name. Do not ask for another description.
+                                If you need to save the meal, prefer tools over plain text.
+                                Examples:
+                                User: "I had Mac Menu, 950 kcal."
+                                Assistant action: call logFoodEntry(mealName="Mac Menu", calories=950, ...)
+                                User: "I ate potato burek, estimate calories for me."
+                                Assistant action: estimate calories, then call logFoodEntry(mealName="potato burek", ...)
+                                User: "Log yogurt with berries for yesterday, 220 kcal."
+                                Assistant action: call logFoodEntry(mealName="yogurt with berries", dateIso="<yesterday>", calories=220, ...)
                                 Base concrete claims about the user's diet on the trusted context and
                                 tool results, not guesses.
                                 Always be specific about today's meals first, then give 1-3 useful
@@ -115,26 +154,32 @@ class LiteRtDietChatEngine(
                 Contents.of(listOf(Content.Text(prompt))),
                 object : MessageCallback {
                     override fun onMessage(message: Message) {
+                        message.channels["thought"]?.takeIf { it.isNotBlank() }?.let { thought ->
+                            debugLog("thought chunk=${thought.take(800)}")
+                        }
+                        debugLog("onMessage chunkLength=${message.toString().length}")
+                        debugLog("text chunk=${message.toString().take(800)}")
                         builder.append(message.toString())
                     }
 
                     override fun onDone() {
+                        debugLog("onDone totalLength=${builder.length}")
                         if (continuation.isActive) {
                             continuation.resume(builder.toString())
                         }
                     }
 
                     override fun onError(throwable: Throwable) {
+                        Log.e(TAG, "conversation onError", throwable)
                         if (!continuation.isActive) return
                         if (throwable is CancellationException) {
                             continuation.cancel(throwable)
                         } else {
-                            Log.e(TAG, "Diet chat failed", throwable)
                             continuation.resumeWithException(throwable)
                         }
                     }
                 },
-                emptyMap(),
+                mapOf("enable_thinking" to "true"),
             )
         }
 
@@ -171,7 +216,7 @@ class LiteRtDietChatEngine(
         } else {
             entries.take(12).forEach { entry ->
                 appendLine(
-                    "- ${entry.dateIso}: ${entry.description ?: "Unknown meal"}, " +
+                    "- id=${entry.entryId}, ${entry.dateIso}: ${entry.description ?: "Unknown meal"}, " +
                         "${entry.finalCalories} kcal, source=${entry.source}, needsManual=${entry.needsManual}",
                 )
             }
@@ -180,5 +225,11 @@ class LiteRtDietChatEngine(
 
     companion object {
         private const val TAG = "LiteRtDietChat"
+    }
+
+    private fun debugLog(message: String) {
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, message)
+        }
     }
 }

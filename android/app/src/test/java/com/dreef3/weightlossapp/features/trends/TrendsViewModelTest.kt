@@ -1,7 +1,11 @@
 package com.dreef3.weightlossapp.features.trends
 
 import com.dreef3.weightlossapp.app.time.LocalDateProvider
+import com.dreef3.weightlossapp.chat.ChatRole
+import com.dreef3.weightlossapp.chat.CoachChatSession
+import com.dreef3.weightlossapp.chat.DietChatMessage
 import com.dreef3.weightlossapp.domain.calculation.TrendAggregator
+import com.dreef3.weightlossapp.domain.repository.CoachChatRepository
 import com.dreef3.weightlossapp.domain.model.ActivityLevel
 import com.dreef3.weightlossapp.domain.model.ConfidenceState
 import com.dreef3.weightlossapp.domain.model.ConfirmationStatus
@@ -14,6 +18,8 @@ import com.dreef3.weightlossapp.domain.model.TrendWindowType
 import com.dreef3.weightlossapp.domain.model.UserProfile
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
+import com.dreef3.weightlossapp.domain.usecase.BackgroundPhotoCaptureUseCase
+import com.dreef3.weightlossapp.domain.usecase.PhotoProcessingScheduler
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,7 +55,7 @@ class TrendsViewModelTest {
 
     @Test
     fun switchesWindowAndMarksPartialHistory() = runTest(dispatcher) {
-        val today = LocalDate.parse("2026-04-03")
+        val today = LocalDate.now(ZoneId.of("UTC"))
         val periods = listOf(
             DailyCalorieBudgetPeriod(
                 profileId = 1,
@@ -68,7 +74,13 @@ class TrendsViewModelTest {
             localDateProvider = LocalDateProvider(ZoneId.of("UTC")),
             profileRepository = TrendsFakeProfileRepository(periods),
             foodEntryRepository = TrendsFakeFoodEntryRepository(entries),
+            coachChatRepository = TrendsFakeCoachChatRepository(),
             trendAggregator = TrendAggregator(),
+            backgroundPhotoCaptureUseCase = BackgroundPhotoCaptureUseCase(
+                repository = TrendsFakeFoodEntryRepository(entries),
+                scheduler = NoopTrendPhotoScheduler(),
+                localDateProvider = LocalDateProvider(ZoneId.of("UTC")),
+            ),
         )
 
         advanceUntilIdle()
@@ -99,6 +111,24 @@ class TrendsViewModelTest {
     )
 }
 
+private class TrendsFakeCoachChatRepository : CoachChatRepository {
+    override fun observeSessionForDate(date: LocalDate): Flow<CoachChatSession?> = MutableStateFlow(null)
+    override fun observeMessages(sessionId: Long): Flow<List<DietChatMessage>> = MutableStateFlow(emptyList())
+    override fun observeSessionsInRange(startDate: LocalDate, endDate: LocalDate): Flow<List<CoachChatSession>> =
+        MutableStateFlow(emptyList())
+    override suspend fun getSession(sessionId: Long): CoachChatSession? = null
+    override suspend fun getMessages(sessionId: Long): List<DietChatMessage> = emptyList()
+    override suspend fun ensureSessionForDate(date: LocalDate): Long = 1L
+    override suspend fun appendMessage(
+        sessionId: Long,
+        role: ChatRole,
+        text: String,
+        createdAtEpochMs: Long,
+        imagePath: String?,
+    ): Long = 1L
+    override suspend fun updateSessionSummary(sessionId: Long, summary: String) = Unit
+}
+
 private class TrendsFakeFoodEntryRepository(
     entries: List<FoodEntry>,
 ) : FoodEntryRepository {
@@ -109,6 +139,8 @@ private class TrendsFakeFoodEntryRepository(
     override fun observeEntriesInRange(startDate: LocalDate, endDate: LocalDate): Flow<List<FoodEntry>> = flow
 
     override fun observeAllEntries(): Flow<List<FoodEntry>> = flow
+
+    override suspend fun getEntry(entryId: Long): FoodEntry? = flow.value.firstOrNull { it.id == entryId }
 
     override suspend fun upsert(entry: FoodEntry): Long = entry.id
 }
@@ -142,4 +174,8 @@ private class TrendsFakeProfileRepository(
 
     override suspend fun findBudgetFor(date: LocalDate): DailyCalorieBudgetPeriod? =
         flow.value.filter { it.effectiveFromDate <= date }.maxByOrNull { it.effectiveFromDate }
+}
+
+private class NoopTrendPhotoScheduler : PhotoProcessingScheduler {
+    override fun enqueue(entryId: Long, imagePath: String, capturedAtEpochMs: Long) = Unit
 }

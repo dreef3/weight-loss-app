@@ -2,18 +2,23 @@ package com.dreef3.weightlossapp.app.di
 
 import android.content.Context
 import com.dreef3.weightlossapp.chat.DietChatEngine
+import com.dreef3.weightlossapp.chat.DietEntryCorrectionService
 import com.dreef3.weightlossapp.chat.LiteRtDietChatEngine
+import com.dreef3.weightlossapp.app.media.ModelDownloadRepository
 import com.dreef3.weightlossapp.app.media.ModelDownloader
 import com.dreef3.weightlossapp.app.media.ModelStorage
 import com.dreef3.weightlossapp.app.media.PhotoStorage
+import com.dreef3.weightlossapp.app.network.NetworkConnectionMonitor
 import com.dreef3.weightlossapp.app.time.LocalDateProvider
 import com.dreef3.weightlossapp.data.local.AppDatabase
 import com.dreef3.weightlossapp.data.preferences.AppPreferences
+import com.dreef3.weightlossapp.data.repository.CoachChatRepositoryImpl
 import com.dreef3.weightlossapp.data.repository.FoodEntryRepositoryImpl
 import com.dreef3.weightlossapp.data.repository.ProfileRepositoryImpl
 import com.dreef3.weightlossapp.domain.calculation.CalorieBudgetCalculator
 import com.dreef3.weightlossapp.domain.calculation.SummaryAggregator
 import com.dreef3.weightlossapp.domain.calculation.TrendAggregator
+import com.dreef3.weightlossapp.domain.repository.CoachChatRepository
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
 import com.dreef3.weightlossapp.domain.usecase.BackgroundPhotoCaptureUseCase
@@ -23,14 +28,18 @@ import com.dreef3.weightlossapp.domain.usecase.SaveUserProfileUseCase
 import com.dreef3.weightlossapp.domain.usecase.UpdateFoodEntryUseCase
 import com.dreef3.weightlossapp.inference.FoodEstimationEngine
 import com.dreef3.weightlossapp.inference.LiteRtFoodEstimationEngine
+import com.dreef3.weightlossapp.inference.SmolVlmFoodEstimationEngine
 import com.dreef3.weightlossapp.work.WorkManagerPhotoProcessingScheduler
 class AppContainer private constructor(context: Context) {
-    private val database = AppDatabase.build(context)
+    val appContext: Context = context
+    val database = AppDatabase.build(context)
     val preferences = AppPreferences(context)
     val localDateProvider = LocalDateProvider()
     val photoStorage = PhotoStorage(context)
     val modelStorage = ModelStorage(context)
     val modelDownloader = ModelDownloader(modelStorage)
+    val modelDownloadRepository = ModelDownloadRepository(context, modelStorage)
+    val networkConnectionMonitor = NetworkConnectionMonitor(context)
     val photoProcessingScheduler = WorkManagerPhotoProcessingScheduler(context)
     val budgetCalculator = CalorieBudgetCalculator()
     val summaryAggregator = SummaryAggregator()
@@ -43,6 +52,11 @@ class AppContainer private constructor(context: Context) {
 
     val foodEntryRepository: FoodEntryRepository = FoodEntryRepositoryImpl(
         foodEntryDao = database.foodEntryDao(),
+    )
+
+    val coachChatRepository: CoachChatRepository = CoachChatRepositoryImpl(
+        sessionDao = database.coachChatSessionDao(),
+        messageDao = database.coachChatMessageDao(),
     )
 
     val saveUserProfileUseCase = SaveUserProfileUseCase(
@@ -59,12 +73,23 @@ class AppContainer private constructor(context: Context) {
         localDateProvider = localDateProvider,
     )
     val saveManualCaloriesUseCase = SaveManualCaloriesUseCase(foodEntryRepository)
+    val dietEntryCorrectionService = DietEntryCorrectionService(
+        foodEntryRepository = foodEntryRepository,
+        updateFoodEntryUseCase = updateFoodEntryUseCase,
+        localDateProvider = localDateProvider,
+    )
 
-    val foodEstimationEngine: FoodEstimationEngine = LiteRtFoodEstimationEngine(
+    val gemmaFoodEstimationEngine: FoodEstimationEngine = LiteRtFoodEstimationEngine(
         modelFile = modelStorage.defaultModelFile,
     )
+    val smolVlmFoodEstimationEngine: FoodEstimationEngine = SmolVlmFoodEstimationEngine(
+        context = context,
+        modelFile = modelStorage.fileFor(com.dreef3.weightlossapp.app.media.ModelDescriptors.smolVlm),
+    )
+    val foodEstimationEngine: FoodEstimationEngine = gemmaFoodEstimationEngine
     val dietChatEngine: DietChatEngine = LiteRtDietChatEngine(
         modelFile = modelStorage.defaultModelFile,
+        correctionService = dietEntryCorrectionService,
     )
 
     companion object {
