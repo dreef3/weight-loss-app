@@ -109,6 +109,10 @@ class LiteRtDietChatEngine(
                                 or calorie history.
                                 When the user corrects a saved meal, use tools to find the entry and
                                 call correctEntry instead of merely suggesting the change.
+                                When the user tells you about an unlogged meal and gives enough
+                                information to save it, call logFoodEntry instead of only replying
+                                in text. If calories are missing or ambiguous, ask a short follow-up
+                                question instead of guessing.
                                 Base concrete claims about the user's diet on the trusted context and
                                 tool results, not guesses.
                                 Always be specific about today's meals first, then give 1-3 useful

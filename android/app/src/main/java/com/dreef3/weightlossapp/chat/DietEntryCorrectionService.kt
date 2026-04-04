@@ -1,8 +1,15 @@
 package com.dreef3.weightlossapp.chat
 
+import com.dreef3.weightlossapp.app.time.LocalDateProvider
+import com.dreef3.weightlossapp.domain.model.ConfidenceState
+import com.dreef3.weightlossapp.domain.model.ConfirmationStatus
+import com.dreef3.weightlossapp.domain.model.FoodEntry
 import com.dreef3.weightlossapp.domain.model.FoodEntrySource
+import com.dreef3.weightlossapp.domain.model.FoodEntryStatus
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.usecase.UpdateFoodEntryUseCase
+import java.time.Instant
+import java.time.LocalDate
 
 data class DietEntryCorrectionRequest(
     val entryId: Long,
@@ -11,9 +18,17 @@ data class DietEntryCorrectionRequest(
     val reason: String?,
 )
 
+data class DietEntryLogRequest(
+    val description: String,
+    val calories: Int,
+    val dateIso: String?,
+    val reason: String?,
+)
+
 class DietEntryCorrectionService(
     private val foodEntryRepository: FoodEntryRepository,
     private val updateFoodEntryUseCase: UpdateFoodEntryUseCase,
+    private val localDateProvider: LocalDateProvider,
 ) {
     suspend fun applyCorrection(request: DietEntryCorrectionRequest): Map<String, Any?> {
         require(request.correctedCalories != null || !request.correctedDescription.isNullOrBlank()) {
@@ -45,9 +60,51 @@ class DietEntryCorrectionService(
         )
     }
 
+    suspend fun logEntry(request: DietEntryLogRequest): Map<String, Any?> {
+        require(request.description.isNotBlank()) { "Description must not be blank." }
+        require(request.calories > 0) { "Calories must be greater than zero." }
+
+        val entryDate = request.dateIso
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(LocalDate::parse)
+            ?: localDateProvider.today()
+        val timestamp = Instant.now()
+
+        val entry = FoodEntry(
+            capturedAt = timestamp,
+            entryDate = entryDate,
+            imagePath = "",
+            estimatedCalories = request.calories,
+            finalCalories = request.calories,
+            confidenceState = ConfidenceState.High,
+            detectedFoodLabel = request.description.trim(),
+            confidenceNotes = buildLogNote(request.reason),
+            confirmationStatus = ConfirmationStatus.NotRequired,
+            source = FoodEntrySource.UserCorrected,
+            entryStatus = FoodEntryStatus.Ready,
+        )
+
+        val entryId = updateFoodEntryUseCase(entry)
+
+        return mapOf(
+            "success" to true,
+            "entryId" to entryId.toInt(),
+            "description" to request.description.trim(),
+            "finalCalories" to request.calories,
+            "date" to entryDate.toString(),
+            "message" to "Logged ${request.description.trim()} at ${request.calories} kcal.",
+        )
+    }
+
     private fun buildCorrectionNote(existingNotes: String?, reason: String?): String? {
         val cleanedReason = reason?.trim()?.ifBlank { null }
         val correctionNote = cleanedReason?.let { "Coach correction: $it" } ?: "Coach correction applied."
         return listOfNotNull(existingNotes?.takeIf { it.isNotBlank() }, correctionNote).joinToString(" | ")
+    }
+
+    private fun buildLogNote(reason: String?): String? {
+        val cleanedReason = reason?.trim()?.ifBlank { null }
+        return cleanedReason?.let { "Coach logged entry: $it" } ?: "Coach logged entry."
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,6 +76,14 @@ fun CoachChatScreen(
     onRequestOverview: () -> Unit,
     onSuggestCorrection: () -> Unit,
 ) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(state.messages.size, state.isSending) {
+        val extraItems = if (state.isSending) 1 else 0
+        val targetIndex = (state.messages.size + extraItems - 1).coerceAtLeast(0)
+        listState.animateScrollToItem(targetIndex)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -88,6 +97,7 @@ fun CoachChatScreen(
         )
         LazyColumn(
             modifier = Modifier.weight(1f),
+            state = listState,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(state.messages) { message ->

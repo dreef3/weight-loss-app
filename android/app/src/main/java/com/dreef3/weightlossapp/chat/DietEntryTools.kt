@@ -70,16 +70,35 @@ class DietEntryTools(
         description = "Correct a saved food entry when the user explicitly provides better calories, a better description, or both. Use only when the target entry is clear.",
     )
     fun correctEntry(
-        @ToolParam(description = "The exact entryId of the saved food entry to update.") entryId: Long,
+        @ToolParam(description = "The exact entryId of the saved food entry to update.") entryId: Int,
         @ToolParam(description = "Corrected calorie value as a whole number. Use -1 if calories are not being changed.") correctedCalories: Int,
         @ToolParam(description = "Corrected short food description. Use empty string if description is not being changed.") correctedDescription: String,
         @ToolParam(description = "Short reason based on the user's correction.") reason: String,
     ): Map<String, Any?> = runBlocking {
         correctionService.applyCorrection(
             DietEntryCorrectionRequest(
-                entryId = entryId,
+                entryId = entryId.toLong(),
                 correctedCalories = correctedCalories.takeIf { it >= 0 },
                 correctedDescription = correctedDescription.takeIf { it.isNotBlank() },
+                reason = reason,
+            ),
+        )
+    }
+
+    @Tool(
+        description = "Log a new food entry without a photo when the user explicitly says what they ate and provides calories. Use today's date unless the user clearly specifies another ISO date.",
+    )
+    fun logFoodEntry(
+        @ToolParam(description = "Short food description to save.") description: String,
+        @ToolParam(description = "Whole-number calories for the entry.") calories: Int,
+        @ToolParam(description = "Entry date in ISO format yyyy-MM-dd. Use empty string for today.") dateIso: String,
+        @ToolParam(description = "Short note explaining that this was added from chat.") reason: String,
+    ): Map<String, Any?> = runBlocking {
+        correctionService.logEntry(
+            DietEntryLogRequest(
+                description = description,
+                calories = calories,
+                dateIso = dateIso.takeIf { it.isNotBlank() },
                 reason = reason,
             ),
         )

@@ -33,54 +33,57 @@ class LiteRtFoodEstimationEngine(
     private val modelFile: File,
 ) : FoodEstimationEngine {
     private val engineMutex = Mutex()
+    private val inferenceMutex = Mutex()
     private var engine: Engine? = null
 
     override suspend fun estimate(request: FoodEstimationRequest): Result<FoodEstimationResult> =
         withContext(Dispatchers.Default) {
-            runCatching {
-            logModelLookup("estimate-start")
-            if (!modelFile.exists() || modelFile.length() == 0L) {
-                Log.e(TAG, "Model file missing at ${modelFile.absolutePath}")
-                throw FoodEstimationException(FoodEstimationError.ModelUnavailable)
-            }
+            inferenceMutex.withLock {
+                runCatching {
+                    logModelLookup("estimate-start")
+                    if (!modelFile.exists() || modelFile.length() == 0L) {
+                        Log.e(TAG, "Model file missing at ${modelFile.absolutePath}")
+                        throw FoodEstimationException(FoodEstimationError.ModelUnavailable)
+                    }
 
-            val bitmap = BitmapFactory.decodeFile(request.imagePath)
-                ?: throw FoodEstimationException(FoodEstimationError.UnreadableImage)
+                    val bitmap = BitmapFactory.decodeFile(request.imagePath)
+                        ?: throw FoodEstimationException(FoodEstimationError.UnreadableImage)
 
-            val estimationResult = try {
-                val activeEngine = getOrCreateEngine()
-                var submittedEstimate: ToolFoodEstimate? = null
-                val toolProviders = listOf(
-                    tool(
-                        FoodEstimationTools { estimate ->
-                            submittedEstimate = estimate
-                        },
-                    ),
-                )
-                debugLog("estimate prompt chars=${PROMPT.trimIndent().length} tools=${toolProviders.size}")
-                val response = activeEngine.createToolConversation(toolProviders).use { conversation ->
-                    conversation.awaitResponse(bitmap = bitmap)
+                    val estimationResult = try {
+                        val activeEngine = getOrCreateEngine()
+                        var submittedEstimate: ToolFoodEstimate? = null
+                        val toolProviders = listOf(
+                            tool(
+                                FoodEstimationTools { estimate ->
+                                    submittedEstimate = estimate
+                                },
+                            ),
+                        )
+                        debugLog("estimate prompt chars=${PROMPT.trimIndent().length} tools=${toolProviders.size}")
+                        val response = activeEngine.createToolConversation(toolProviders).use { conversation ->
+                            conversation.awaitResponse(bitmap = bitmap)
+                        }
+                        debugLog("estimate raw final=${response.responseText.take(400)}")
+                        submittedEstimate?.let {
+                            debugLog("tool result description=${it.description} calories=${it.calories}")
+                        }
+                        submittedEstimate?.toResult(response.debugTrace) ?: FoodEstimationTextParser
+                            .parse(response.responseText)
+                            .copy(debugInteractionLog = response.debugTrace)
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: FoodEstimationException) {
+                        throw exception
+                    } catch (exception: Exception) {
+                        Log.e(TAG, "estimate failed", exception)
+                        throw FoodEstimationException(
+                            error = FoodEstimationError.EstimationFailed,
+                            debugInteractionLog = exception.stackTraceToString(),
+                        )
+                    }
+
+                    estimationResult
                 }
-                debugLog("estimate raw final=${response.responseText.take(400)}")
-                submittedEstimate?.let {
-                    debugLog("tool result description=${it.description} calories=${it.calories}")
-                }
-                submittedEstimate?.toResult(response.debugTrace) ?: FoodEstimationTextParser
-                    .parse(response.responseText)
-                    .copy(debugInteractionLog = response.debugTrace)
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: FoodEstimationException) {
-                throw exception
-            } catch (exception: Exception) {
-                Log.e(TAG, "estimate failed", exception)
-                throw FoodEstimationException(
-                    error = FoodEstimationError.EstimationFailed,
-                    debugInteractionLog = exception.stackTraceToString(),
-                )
-            }
-
-            estimationResult
             }
         }
 

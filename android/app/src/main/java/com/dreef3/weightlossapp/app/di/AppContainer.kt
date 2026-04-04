@@ -76,6 +76,7 @@ class AppContainer private constructor(context: Context) {
     val dietEntryCorrectionService = DietEntryCorrectionService(
         foodEntryRepository = foodEntryRepository,
         updateFoodEntryUseCase = updateFoodEntryUseCase,
+        localDateProvider = localDateProvider,
     )
 
     val gemmaFoodEstimationEngine: FoodEstimationEngine = LiteRtFoodEstimationEngine(
