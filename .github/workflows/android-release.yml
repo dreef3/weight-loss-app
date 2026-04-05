@@ -77,7 +77,6 @@ jobs:
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/mapping/release/mapping.txt
-            android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
 
       - name: Attach release assets to GitHub release
         if: github.event_name == 'release'
@@ -87,7 +86,6 @@ jobs:
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/mapping/release/mapping.txt
-            android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
 
       - name: Upload to Google Play internal track
         if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
@@ -97,5 +95,4 @@ jobs:
           packageName: com.dreef3.weightlossapp
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           mappingFile: android/app/build/outputs/mapping/release/mapping.txt
-          debugSymbols: android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip
           track: ${{ vars.GOOGLE_PLAY_TRACK || 'internal' }}

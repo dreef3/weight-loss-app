@@ -31,7 +31,6 @@ Optional repository variable:
   - `app-release.apk` for manual testing/distribution
 - It also uploads:
   - ProGuard/R8 `mapping.txt`
-  - `native-debug-symbols.zip`
 - If `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is not set, the workflow still produces signed release artifacts and attaches them to the GitHub release.
 - Example command to create `ANDROID_KEYSTORE_BASE64` on Linux:
   `base64 -w 0 upload-keystore.jks`

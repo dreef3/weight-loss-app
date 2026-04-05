@@ -14,13 +14,12 @@
   - signed `app-release.aab`
   - signed `app-release.apk`
   - `mapping.txt`
-  - `native-debug-symbols.zip`
 - Trigger the workflow with `workflow_dispatch` for dry runs and via GitHub Release publication for tagged releases.
 - Use local `cd android && ./gradlew bundleRelease` only as a secondary verification path, not the primary release process.
 - Verify the release build uses an upload key, not the debug key.
 - Keep `usesCleartextTraffic` disabled.
 - Keep Android system backup and device-to-device migration disabled; this app uses its own Google Drive backup flow.
-- Keep release shrinking/obfuscation enabled and upload native debug symbols to Play Console if requested.
+- Keep release shrinking/obfuscation enabled.
 
 ## Google Play Console
 

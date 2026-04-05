@@ -17,7 +17,6 @@ val signingProperties = Properties().apply {
 android {
     namespace = "com.dreef3.weightlossapp"
     compileSdk = 35
-    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.dreef3.weightlossapp"
@@ -59,9 +58,6 @@ android {
             if (signingConfigs.findByName("release") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            ndk {
-                debugSymbolLevel = "SYMBOL_TABLE"
-            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -89,13 +85,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     packaging {
