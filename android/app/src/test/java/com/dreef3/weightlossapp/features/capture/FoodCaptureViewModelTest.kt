@@ -201,6 +201,8 @@ private class FakeFoodEntryRepository : FoodEntryRepository {
         savedEntries += entry.copy(id = id)
         return id
     }
+
+    override suspend fun delete(entry: FoodEntry) = Unit
 }
 
 private class FakeModelDownloadRepository(

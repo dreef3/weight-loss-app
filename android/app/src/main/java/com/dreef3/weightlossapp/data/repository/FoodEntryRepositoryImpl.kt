@@ -1,5 +1,7 @@
 package com.dreef3.weightlossapp.data.repository
 
+import com.dreef3.weightlossapp.app.sync.DriveSyncTrigger
+import com.dreef3.weightlossapp.app.sync.NoOpDriveSyncTrigger
 import com.dreef3.weightlossapp.data.local.dao.FoodEntryDao
 import com.dreef3.weightlossapp.domain.model.FoodEntry
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
@@ -9,6 +11,7 @@ import java.time.LocalDate
 
 class FoodEntryRepositoryImpl(
     private val foodEntryDao: FoodEntryDao,
+    private val driveSyncTrigger: DriveSyncTrigger = NoOpDriveSyncTrigger,
 ) : FoodEntryRepository {
     override fun observeEntriesFor(date: LocalDate): Flow<List<FoodEntry>> =
         foodEntryDao.observeForDate(date.toString()).map { items -> items.map { it.toDomain() } }
@@ -22,7 +25,10 @@ class FoodEntryRepositoryImpl(
 
     override suspend fun getEntry(entryId: Long): FoodEntry? = foodEntryDao.getById(entryId)?.toDomain()
 
-    override suspend fun upsert(entry: FoodEntry): Long = foodEntryDao.upsert(entry.toEntity())
+    override suspend fun upsert(entry: FoodEntry): Long =
+        foodEntryDao.upsert(entry.toEntity()).also {
+            driveSyncTrigger.requestSync("food_entry:upsert")
+        }
 
     override suspend fun delete(entry: FoodEntry) {
         foodEntryDao.update(
@@ -30,5 +36,6 @@ class FoodEntryRepositoryImpl(
                 deletedAt = java.time.Instant.now(),
             ).toEntity(),
         )
+        driveSyncTrigger.requestSync("food_entry:delete")
     }
 }

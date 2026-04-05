@@ -22,6 +22,9 @@ interface CoachChatSessionDao {
     @Query("SELECT * FROM coach_chat_session WHERE sessionDateIso BETWEEN :startIso AND :endIso ORDER BY sessionDateIso DESC, updatedAtEpochMs DESC")
     fun observeInRange(startIso: String, endIso: String): Flow<List<CoachChatSessionEntity>>
 
+    @Query("SELECT * FROM coach_chat_session ORDER BY createdAtEpochMs ASC, id ASC")
+    suspend fun getAll(): List<CoachChatSessionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(session: CoachChatSessionEntity): Long
 

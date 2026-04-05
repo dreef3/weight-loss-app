@@ -143,6 +143,8 @@ private class TrendsFakeFoodEntryRepository(
     override suspend fun getEntry(entryId: Long): FoodEntry? = flow.value.firstOrNull { it.id == entryId }
 
     override suspend fun upsert(entry: FoodEntry): Long = entry.id
+
+    override suspend fun delete(entry: FoodEntry) = Unit
 }
 
 private class TrendsFakeProfileRepository(

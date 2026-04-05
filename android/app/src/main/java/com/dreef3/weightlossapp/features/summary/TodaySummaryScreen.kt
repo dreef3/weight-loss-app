@@ -333,6 +333,7 @@ private fun CoachHistoryCard(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun HistoryEntryCard(
     entry: FoodEntry,
     onClick: () -> Unit,
@@ -445,6 +446,7 @@ private fun StatusCard(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ManualEntryCard(
     entry: FoodEntry,
     onOpenManualEntry: () -> Unit,

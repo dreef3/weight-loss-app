@@ -27,4 +27,5 @@ Kotlin 2.x: Follow standard conventions
 - 001-calorie-photo-tracker: Switched planning to native Android with Kotlin, Compose, Room, CameraX, and on-device Gemma via LiteRT-LM
 
 <!-- MANUAL ADDITIONS START -->
+- Never run more than one Gradle build at a time on this machine. Before starting any `./gradlew ...` command, verify there is no other active Gradle wrapper build for the current user.
 <!-- MANUAL ADDITIONS END -->

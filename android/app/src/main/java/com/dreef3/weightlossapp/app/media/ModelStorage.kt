@@ -2,6 +2,7 @@ package com.dreef3.weightlossapp.app.media
 
 import android.content.Context
 import android.util.Log
+import com.dreef3.weightlossapp.BuildConfig
 import java.io.File
 
 class ModelStorage(
@@ -46,6 +47,7 @@ class ModelStorage(
         tag: String = "ModelStorage",
         model: ModelDescriptor = ModelDescriptors.gemma,
     ) {
+        if (!BuildConfig.ENABLE_VERBOSE_LOGGING) return
         val directory = modelDirectory
         val modelFile = fileFor(model)
         Log.i(

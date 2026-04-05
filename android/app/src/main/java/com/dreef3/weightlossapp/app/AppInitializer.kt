@@ -1,6 +1,7 @@
 package com.dreef3.weightlossapp.app
 
 import android.util.Log
+import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.app.media.ModelDescriptors
 import com.dreef3.weightlossapp.app.network.NetworkConnectionType
@@ -24,20 +25,32 @@ object AppInitializer {
                 container.modelStorage.cleanupIncompleteModelFiles(ModelDescriptors.gemma)
                 container.modelStorage.logState(tag = TAG, model = ModelDescriptors.gemma)
                 runBlocking { container.preferences.setCalorieEstimationModel(CalorieEstimationModel.Gemma) }
+                val driveSyncEnabled = runBlocking { container.preferences.readDriveSyncState().isEnabled }
+                if (driveSyncEnabled) {
+                    container.driveSyncScheduler.enablePeriodicSync()
+                } else {
+                    container.driveSyncScheduler.disablePeriodicSync()
+                }
                 val onboardingComplete = runBlocking { container.preferences.hasCompletedOnboarding.first() }
                 if (onboardingComplete &&
                     !container.modelStorage.hasUsableModel(ModelDescriptors.gemma) &&
                     container.networkConnectionMonitor.currentConnectionType() == NetworkConnectionType.Wifi
                 ) {
                     container.modelDownloadRepository.enqueueIfNeeded(ModelDescriptors.gemma)
-                    Log.i(TAG, "Scheduled Gemma background download on Wi-Fi")
+                    debugLog("Scheduled Gemma background download on Wi-Fi")
                 }
                 if (!container.modelStorage.hasUsableModel(ModelDescriptors.gemma)) {
-                    Log.i(TAG, "Skipped model warm-up because Gemma is not ready yet")
+                    debugLog("Skipped model warm-up because Gemma is not ready yet")
                     return@runCatching
                 }
-                Log.i(TAG, "Skipping startup Gemma warm-up for now")
+                debugLog("Skipping startup Gemma warm-up for now")
             }
+        }
+    }
+
+    private fun debugLog(message: String) {
+        if (BuildConfig.ENABLE_VERBOSE_LOGGING) {
+            Log.i(TAG, message)
         }
     }
 

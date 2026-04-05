@@ -15,6 +15,9 @@ interface CoachChatMessageDao {
     @Query("SELECT * FROM coach_chat_message WHERE sessionId = :sessionId ORDER BY createdAtEpochMs ASC, id ASC")
     suspend fun getForSession(sessionId: Long): List<CoachChatMessageEntity>
 
+    @Query("SELECT * FROM coach_chat_message ORDER BY createdAtEpochMs ASC, id ASC")
+    suspend fun getAll(): List<CoachChatMessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: CoachChatMessageEntity): Long
 }
