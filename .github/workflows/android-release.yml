@@ -1,10 +1,23 @@
 name: Android Release
 
 on:
-  release:
-    types:
-      - published
   workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Semantic version bump to apply
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      tracks:
+        description: Comma-separated Google Play tracks
+        required: true
+        default: qa
+        type: string
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -13,6 +26,9 @@ concurrency:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
 
     defaults:
       run:
@@ -22,7 +38,66 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref_name }}
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Compute release version
+        id: version
+        run: |
+          set -euo pipefail
+          latest_tag=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+          if [ -z "$latest_tag" ]; then
+            base_version="0.1.0"
+          else
+            base_version="${latest_tag#v}"
+          fi
+
+          IFS='.' read -r major minor patch <<EOF
+          $base_version
+          EOF
+
+          selected_bump="${{ inputs.bump_type }}"
+          if [ "$selected_bump" = "auto" ]; then
+            if [ -n "$latest_tag" ]; then
+              commit_messages=$(git log --format=%s%n%b "${latest_tag}..HEAD")
+            else
+              commit_messages=$(git log --format=%s%n%b)
+            fi
+
+            if printf '%s\n' "$commit_messages" | rg -q 'BREAKING CHANGE|^[^[:space:]]+(\([^)]+\))?!:'; then
+              selected_bump="major"
+            elif printf '%s\n' "$commit_messages" | rg -q '^feat(\([^)]+\))?:'; then
+              selected_bump="minor"
+            else
+              selected_bump="patch"
+            fi
+          fi
+
+          case "$selected_bump" in
+            patch)
+              patch=$((patch + 1))
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+          esac
+
+          version_name="${major}.${minor}.${patch}"
+          version_tag="v${version_name}"
+          version_code=$((major * 10000 + minor * 100 + patch))
+
+          {
+            echo "selected_bump=$selected_bump"
+            echo "version_name=$version_name"
+            echo "version_tag=$version_tag"
+            echo "version_code=$version_code"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -62,37 +137,53 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          create_credentials_file: true
+          workload_identity_provider: projects/1086833593805/locations/global/workloadIdentityPools/github/providers/my-repo
+          service_account: github-releaser@opportune-chess-492418-r5.iam.gserviceaccount.com
+
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build release bundle and APK
-        run: ./gradlew bundleRelease assembleRelease --no-daemon
+        run: |
+          ./gradlew \
+            -PappVersionCode=${{ steps.version.outputs.version_code }} \
+            -PappVersionName=${{ steps.version.outputs.version_name }} \
+            bundleRelease assembleRelease --no-daemon
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zvaka-release-artifacts
+          name: zvaka-release-${{ steps.version.outputs.version_tag }}
           if-no-files-found: error
           path: |
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/mapping/release/mapping.txt
 
-      - name: Attach release assets to GitHub release
-        if: github.event_name == 'release'
+      - name: Create and publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.version.outputs.version_tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
           files: |
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/mapping/release/mapping.txt
 
-      - name: Upload to Google Play internal track
-        if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      - name: Upload to Google Play tracks
         uses: r0adkll/upload-google-play@v1
         with:
-          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          serviceAccountJson: ${{ steps.auth.outputs.credentials_file_path }}
           packageName: com.dreef3.weightlossapp
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           mappingFile: android/app/build/outputs/mapping/release/mapping.txt
-          track: ${{ vars.GOOGLE_PLAY_TRACK || 'internal' }}
+          tracks: ${{ inputs.tracks }}

@@ -3,18 +3,27 @@
 ## Build And Security
 
 - Primary release build path is GitHub Actions via `.github/workflows/android-release.yml`.
+- The release workflow is manually triggered with `workflow_dispatch`.
+- The workflow automatically:
+  - finds the latest `v*` tag
+  - increments semantic version using the selected bump type (`auto`, `patch`, `minor`, `major`)
+  - derives Android `versionName` and `versionCode`
+  - creates and publishes the matching GitHub release
+  - generates GitHub release notes from changes since the previous release
+  - uploads the AAB to the selected Google Play tracks
 - Add required repository secrets before the first release run:
   - `ANDROID_KEYSTORE_BASE64`
   - `ANDROID_KEYSTORE_PASSWORD`
   - `ANDROID_KEY_ALIAS`
   - `ANDROID_KEY_PASSWORD`
-- Add optional repository secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` to upload to Google Play automatically.
-- Add optional repository variable `GOOGLE_PLAY_TRACK` if the default `internal` track is not desired.
+- GitHub Actions Play upload uses Workload Identity Federation, not a service-account JSON secret.
 - The workflow produces:
   - signed `app-release.aab`
   - signed `app-release.apk`
   - `mapping.txt`
-- Trigger the workflow with `workflow_dispatch` for dry runs and via GitHub Release publication for tagged releases.
+- Workflow inputs:
+  - `bump_type`
+  - `tracks` with default `qa`
 - Use local `cd android && ./gradlew bundleRelease` only as a secondary verification path, not the primary release process.
 - Verify the release build uses an upload key, not the debug key.
 - Keep `usesCleartextTraffic` disabled.

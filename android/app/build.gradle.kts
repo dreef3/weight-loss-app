@@ -14,6 +14,15 @@ val signingProperties = Properties().apply {
     }
 }
 
+val appVersionCode = providers.gradleProperty("appVersionCode")
+    .orElse(providers.environmentVariable("APP_VERSION_CODE"))
+    .map(String::toInt)
+    .getOrElse(1)
+
+val appVersionName = providers.gradleProperty("appVersionName")
+    .orElse(providers.environmentVariable("APP_VERSION_NAME"))
+    .getOrElse("0.1.0")
+
 android {
     namespace = "com.dreef3.weightlossapp"
     compileSdk = 35
@@ -22,8 +31,8 @@ android {
         applicationId = "com.dreef3.weightlossapp"
         minSdk = 34
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

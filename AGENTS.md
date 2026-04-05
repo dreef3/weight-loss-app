@@ -28,4 +28,5 @@ Kotlin 2.x: Follow standard conventions
 
 <!-- MANUAL ADDITIONS START -->
 - Never run more than one Gradle build at a time on this machine. Before starting any `./gradlew ...` command, verify there is no other active Gradle wrapper build for the current user.
+- Use Conventional Commits / semantic commit messages for all commits in this repo. Prefer formats like `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`, `ci: ...`, and use `!` or `BREAKING CHANGE:` for breaking changes.
 <!-- MANUAL ADDITIONS END -->
