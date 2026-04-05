@@ -124,6 +124,8 @@ private class SummaryFakeFoodEntryRepository : FoodEntryRepository {
     override suspend fun getEntry(entryId: Long): FoodEntry? = entries.value.firstOrNull { it.id == entryId }
 
     override suspend fun upsert(entry: FoodEntry): Long = entry.id
+
+    override suspend fun delete(entry: FoodEntry) = Unit
 }
 
 private class SummaryFakeProfileRepository(

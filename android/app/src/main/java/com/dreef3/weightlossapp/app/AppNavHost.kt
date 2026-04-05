@@ -1,5 +1,9 @@
 package com.dreef3.weightlossapp.app
 
+import android.Manifest
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoGraph
@@ -13,7 +17,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -26,9 +32,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.media.ModelDownloadState
 import com.dreef3.weightlossapp.app.media.ModelDescriptors
+import com.dreef3.weightlossapp.app.network.NetworkConnectionType
+import com.dreef3.weightlossapp.app.notifications.needsNotificationPermission
 import com.dreef3.weightlossapp.features.chat.CoachChatScreenRoute
 import com.dreef3.weightlossapp.features.capture.FoodCaptureScreenRoute
+import com.dreef3.weightlossapp.features.onboarding.LocalModelPreparationScreen
 import com.dreef3.weightlossapp.features.onboarding.OnboardingScreenRoute
 import com.dreef3.weightlossapp.features.onboarding.ProfileEditScreen
 import com.dreef3.weightlossapp.features.summary.TodaySummaryScreenRoute
@@ -152,15 +162,41 @@ fun AppNavHost(
                 )
             }
             composable(AppDestinations.Chat) {
-                val coachReady = AppContainer.instance.modelStorage.hasUsableModel(ModelDescriptors.gemma)
+                val context = LocalContext.current
+                val activity = context as? Activity
+                val container = AppContainer.instance
+                val downloadState by container.modelDownloadRepository
+                    .observeState(ModelDescriptors.gemma)
+                    .collectAsStateWithLifecycle(initialValue = ModelDownloadState())
+                val coachReady = container.modelStorage.hasUsableModel(ModelDescriptors.gemma)
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission(),
+                ) { container.modelDownloadRepository.enqueueIfNeeded(ModelDescriptors.gemma) }
+                fun requestDownload() {
+                    if (activity != null && needsNotificationPermission(context)) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        container.modelDownloadRepository.enqueueIfNeeded(ModelDescriptors.gemma)
+                    }
+                }
+                LaunchedEffect(coachReady, downloadState.isDownloading) {
+                    if (!coachReady &&
+                        !downloadState.isDownloading &&
+                        container.networkConnectionMonitor.currentConnectionType() == NetworkConnectionType.Wifi
+                    ) {
+                        requestDownload()
+                    }
+                }
                 if (coachReady) {
                     CoachChatScreenRoute(
-                        container = AppContainer.instance,
+                        container = container,
                     )
                 } else {
-                    Text(
-                        text = "Coach will unlock after Gemma finishes downloading on Wi‑Fi.",
+                    LocalModelPreparationScreen(
+                        state = downloadState,
                         modifier = Modifier.padding(24.dp),
+                        showRetry = !downloadState.isDownloading,
+                        onRetry = ::requestDownload,
                     )
                 }
             }
@@ -193,6 +229,16 @@ fun AppNavHost(
                         navController.navigate(AppDestinations.Onboarding) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    },
+                    onRestoreCompleted = { isSetupComplete ->
+                        navController.navigate(
+                            if (isSetupComplete) AppDestinations.Home else AppDestinations.Onboarding,
+                        ) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = !isSetupComplete
                             }
                             launchSingleTop = true
                         }

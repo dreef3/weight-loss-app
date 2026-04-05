@@ -1,5 +1,7 @@
 package com.dreef3.weightlossapp.data.repository
 
+import com.dreef3.weightlossapp.app.sync.DriveSyncTrigger
+import com.dreef3.weightlossapp.app.sync.NoOpDriveSyncTrigger
 import com.dreef3.weightlossapp.data.local.dao.DailyCalorieBudgetPeriodDao
 import com.dreef3.weightlossapp.data.local.dao.ProfileDao
 import com.dreef3.weightlossapp.domain.model.DailyCalorieBudgetPeriod
@@ -12,6 +14,7 @@ import java.time.LocalDate
 class ProfileRepositoryImpl(
     private val profileDao: ProfileDao,
     private val budgetDao: DailyCalorieBudgetPeriodDao,
+    private val driveSyncTrigger: DriveSyncTrigger = NoOpDriveSyncTrigger,
 ) : ProfileRepository {
     override fun observeProfile(): Flow<UserProfile?> = profileDao.observeProfile().map { it?.toDomain() }
 
@@ -19,10 +22,12 @@ class ProfileRepositoryImpl(
 
     override suspend fun upsertProfile(profile: UserProfile) {
         profileDao.upsert(profile.toEntity())
+        driveSyncTrigger.requestSync("profile:upsert")
     }
 
     override suspend fun addBudgetPeriod(period: DailyCalorieBudgetPeriod) {
         budgetDao.insert(period.toEntity())
+        driveSyncTrigger.requestSync("profile:budget_period")
     }
 
     override fun observeBudgetPeriods(): Flow<List<DailyCalorieBudgetPeriod>> =

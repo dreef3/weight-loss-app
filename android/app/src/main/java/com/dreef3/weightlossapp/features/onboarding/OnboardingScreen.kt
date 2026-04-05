@@ -1,5 +1,10 @@
 package com.dreef3.weightlossapp.features.onboarding
 
+import android.Manifest
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -13,7 +18,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,26 +25,33 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.notifications.needsNotificationPermission
+import com.dreef3.weightlossapp.app.sync.DriveAuthorizationOutcome
 import com.dreef3.weightlossapp.domain.model.ActivityLevel
 import com.dreef3.weightlossapp.domain.model.Sex
+import kotlinx.coroutines.launch
 
 @Composable
 fun OnboardingScreenRoute(
@@ -49,14 +60,90 @@ fun OnboardingScreenRoute(
 ) {
     val vm: OnboardingViewModel = viewModel(factory = OnboardingViewModelFactory(container))
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val scope = rememberCoroutineScope()
+    var isRestoringBackup by remember { mutableStateOf(false) }
+    var onboardingDriveMessage by remember { mutableStateOf<String?>(null) }
+    var onboardingNotificationMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.isCompleted) {
         if (state.isCompleted) onCompleted()
     }
 
+    suspend fun runRestore(authorization: DriveAuthorizationOutcome.Authorized) {
+        val restoreSummary = container.googleDriveSyncManager.restoreBackup(authorization.accessToken)
+        onboardingDriveMessage = "Restored backup from Google Drive."
+        if (restoreSummary.hasProfile && restoreSummary.hasCompletedOnboarding) {
+            onCompleted()
+        }
+    }
+
+    val driveAuthorizationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val currentActivity = activity
+        if (currentActivity == null) {
+            onboardingDriveMessage = "Google Drive restore requires an active screen."
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            isRestoringBackup = true
+            runCatching {
+                when (
+                    val authorization = container.googleDriveSyncManager.completeAuthorization(
+                        currentActivity,
+                        result.data,
+                    )
+                ) {
+                    is DriveAuthorizationOutcome.Authorized -> runRestore(authorization)
+                    is DriveAuthorizationOutcome.NeedsResolution ->
+                        error("Google Drive authorization still needs confirmation.")
+                }
+            }.onFailure { error ->
+                onboardingDriveMessage = error.message ?: "Google Drive restore failed."
+            }
+            isRestoringBackup = false
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            onboardingNotificationMessage =
+                "Notifications are off, so download progress may only appear inside the app."
+        }
+        vm.requestModelDownload()
+    }
+
     OnboardingScreen(
         state = state,
         onContinueFromIntro = vm::continueFromIntro,
+        onRestoreFromDrive = {
+            val currentActivity = activity
+            if (currentActivity == null) {
+                onboardingDriveMessage = "Google Drive restore requires an active screen."
+                return@OnboardingScreen
+            }
+            scope.launch {
+                isRestoringBackup = true
+                runCatching {
+                    when (val authorization = container.googleDriveSyncManager.authorizeInteractively(currentActivity)) {
+                        is DriveAuthorizationOutcome.Authorized -> runRestore(authorization)
+                        is DriveAuthorizationOutcome.NeedsResolution -> {
+                            isRestoringBackup = false
+                            driveAuthorizationLauncher.launch(
+                                IntentSenderRequest.Builder(authorization.intentSender).build(),
+                            )
+                        }
+                    }
+                }.onFailure { error ->
+                    onboardingDriveMessage = error.message ?: "Google Drive restore failed."
+                    isRestoringBackup = false
+                }
+            }
+        },
         onFirstNameChanged = { value -> vm.updateForm { it.copy(firstName = value) } },
         onAgeChanged = { value -> vm.updateForm { it.copy(ageYears = value.filter(Char::isDigit)) } },
         onHeightChanged = { value -> vm.updateForm { it.copy(heightCm = value.filter(Char::isDigit)) } },
@@ -65,10 +152,19 @@ fun OnboardingScreenRoute(
         onActivityLevelChanged = { value -> vm.updateForm { it.copy(activityLevel = value) } },
         onBackFromProfile = vm::backFromProfile,
         onSubmitProfile = vm::submitProfile,
-        onStartModelDownload = vm::requestModelDownload,
+        onStartModelDownload = {
+            if (needsNotificationPermission(context)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                vm.requestModelDownload()
+            }
+        },
         onConfirmCellularDownload = vm::confirmCellularModelDownload,
         onDismissCellularDownload = vm::dismissCellularModelDownloadConfirmation,
         onFinish = vm::completeSetup,
+        isRestoringBackup = isRestoringBackup,
+        onboardingDriveMessage = onboardingDriveMessage,
+        onboardingNotificationMessage = onboardingNotificationMessage,
     )
 }
 
@@ -76,6 +172,7 @@ fun OnboardingScreenRoute(
 fun OnboardingScreen(
     state: OnboardingUiState,
     onContinueFromIntro: () -> Unit,
+    onRestoreFromDrive: () -> Unit,
     onFirstNameChanged: (String) -> Unit,
     onAgeChanged: (String) -> Unit,
     onHeightChanged: (String) -> Unit,
@@ -88,6 +185,9 @@ fun OnboardingScreen(
     onConfirmCellularDownload: () -> Unit,
     onDismissCellularDownload: () -> Unit,
     onFinish: () -> Unit,
+    isRestoringBackup: Boolean,
+    onboardingDriveMessage: String?,
+    onboardingNotificationMessage: String?,
 ) {
     Column(
         modifier = Modifier
@@ -97,7 +197,12 @@ fun OnboardingScreen(
     ) {
         SetupHeader(step = state.step)
         when (state.step) {
-            OnboardingStep.DownloadIntro -> DownloadIntroStep(onContinueFromIntro)
+            OnboardingStep.DownloadIntro -> DownloadIntroStep(
+                onContinue = onContinueFromIntro,
+                onRestoreFromDrive = onRestoreFromDrive,
+                isRestoringBackup = isRestoringBackup,
+                onboardingDriveMessage = onboardingDriveMessage,
+            )
             OnboardingStep.Profile -> ProfileStep(
                 state = state,
                 onFirstNameChanged = onFirstNameChanged,
@@ -114,6 +219,7 @@ fun OnboardingScreen(
                 estimatedBudgetCalories = state.estimatedBudgetCalories ?: 0,
                 downloadAlreadyInProgress = state.modelDownloadState.isDownloading,
                 onContinue = onStartModelDownload,
+                notificationMessage = onboardingNotificationMessage,
             )
             OnboardingStep.Downloading -> DownloadingStep(state)
             OnboardingStep.Ready -> ReadyStep(
@@ -148,6 +254,9 @@ private fun SetupHeader(step: OnboardingStep) {
 @Composable
 private fun DownloadIntroStep(
     onContinue: () -> Unit,
+    onRestoreFromDrive: () -> Unit,
+    isRestoringBackup: Boolean,
+    onboardingDriveMessage: String?,
 ) {
     StepCard {
         HeroPlate()
@@ -161,8 +270,29 @@ private fun DownloadIntroStep(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text(
+            text = "Already used Žvaka before? Restore your backup from Google Drive before starting a new setup.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        onboardingDriveMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+        }
+        OutlinedButton(
+            onClick = onRestoreFromDrive,
+            enabled = !isRestoringBackup,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (isRestoringBackup) "Restoring..." else "Restore from Google Drive")
+        }
         Button(
             onClick = onContinue,
+            enabled = !isRestoringBackup,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Sounds good")
@@ -231,6 +361,7 @@ private fun BudgetPreviewStep(
     estimatedBudgetCalories: Int,
     downloadAlreadyInProgress: Boolean,
     onContinue: () -> Unit,
+    notificationMessage: String?,
 ) {
     StepCard {
         Text(
@@ -250,6 +381,14 @@ private fun BudgetPreviewStep(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        notificationMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
         Button(
             onClick = onContinue,
             modifier = Modifier.fillMaxWidth(),
@@ -263,45 +402,7 @@ private fun BudgetPreviewStep(
 private fun DownloadingStep(
     state: OnboardingUiState,
 ) {
-    StepCard {
-        DownloadFeast()
-        Text(
-            text = "Downloading the local food-analysis model.",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = "This may take a while because the model is large. Once it is ready, food photos will be processed directly on your device.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        LinearProgressIndicator(
-            progress = { (state.modelDownloadState.progressPercent ?: 0) / 100f },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(10.dp),
-        )
-        Text(
-            text = when {
-                state.modelDownloadState.progressPercent != null ->
-                    "${state.modelDownloadState.progressPercent}% downloaded"
-                state.modelDownloadState.isDownloading -> "Starting download..."
-                else -> "Preparing download..."
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        state.modelDownloadState.errorMessage?.let { error ->
-            Text(
-                text = error,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
+    LocalModelPreparationScreen(state = state.modelDownloadState)
 }
 
 @Composable

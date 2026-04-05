@@ -9,6 +9,9 @@ import com.dreef3.weightlossapp.app.media.ModelDownloader
 import com.dreef3.weightlossapp.app.media.ModelStorage
 import com.dreef3.weightlossapp.app.media.PhotoStorage
 import com.dreef3.weightlossapp.app.network.NetworkConnectionMonitor
+import com.dreef3.weightlossapp.app.sync.AppDataBackupManager
+import com.dreef3.weightlossapp.app.sync.DriveSyncScheduler
+import com.dreef3.weightlossapp.app.sync.GoogleDriveSyncManager
 import com.dreef3.weightlossapp.app.time.LocalDateProvider
 import com.dreef3.weightlossapp.data.local.AppDatabase
 import com.dreef3.weightlossapp.data.preferences.AppPreferences
@@ -33,12 +36,15 @@ import com.dreef3.weightlossapp.work.WorkManagerPhotoProcessingScheduler
 class AppContainer private constructor(context: Context) {
     val appContext: Context = context
     val database = AppDatabase.build(context)
-    val preferences = AppPreferences(context)
+    val driveSyncScheduler = DriveSyncScheduler(context)
+    val preferences = AppPreferences(context, driveSyncScheduler)
     val localDateProvider = LocalDateProvider()
     val photoStorage = PhotoStorage(context)
     val modelStorage = ModelStorage(context)
     val modelDownloader = ModelDownloader(modelStorage)
     val modelDownloadRepository = ModelDownloadRepository(context, modelStorage)
+    val appDataBackupManager = AppDataBackupManager(context, database, preferences)
+    val googleDriveSyncManager = GoogleDriveSyncManager(context, preferences, appDataBackupManager)
     val networkConnectionMonitor = NetworkConnectionMonitor(context)
     val photoProcessingScheduler = WorkManagerPhotoProcessingScheduler(context)
     val budgetCalculator = CalorieBudgetCalculator()
@@ -48,15 +54,18 @@ class AppContainer private constructor(context: Context) {
     val profileRepository: ProfileRepository = ProfileRepositoryImpl(
         profileDao = database.profileDao(),
         budgetDao = database.dailyCalorieBudgetPeriodDao(),
+        driveSyncTrigger = driveSyncScheduler,
     )
 
     val foodEntryRepository: FoodEntryRepository = FoodEntryRepositoryImpl(
         foodEntryDao = database.foodEntryDao(),
+        driveSyncTrigger = driveSyncScheduler,
     )
 
     val coachChatRepository: CoachChatRepository = CoachChatRepositoryImpl(
         sessionDao = database.coachChatSessionDao(),
         messageDao = database.coachChatMessageDao(),
+        driveSyncTrigger = driveSyncScheduler,
     )
 
     val saveUserProfileUseCase = SaveUserProfileUseCase(

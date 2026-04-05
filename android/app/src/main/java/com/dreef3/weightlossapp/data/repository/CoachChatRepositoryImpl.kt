@@ -1,5 +1,7 @@
 package com.dreef3.weightlossapp.data.repository
 
+import com.dreef3.weightlossapp.app.sync.DriveSyncTrigger
+import com.dreef3.weightlossapp.app.sync.NoOpDriveSyncTrigger
 import com.dreef3.weightlossapp.chat.ChatRole
 import com.dreef3.weightlossapp.chat.CoachChatSession
 import com.dreef3.weightlossapp.chat.DietChatMessage
@@ -14,6 +16,7 @@ import java.time.LocalDate
 class CoachChatRepositoryImpl(
     private val sessionDao: CoachChatSessionDao,
     private val messageDao: CoachChatMessageDao,
+    private val driveSyncTrigger: DriveSyncTrigger = NoOpDriveSyncTrigger,
 ) : CoachChatRepository {
     override fun observeSessionForDate(date: LocalDate): Flow<CoachChatSession?> =
         sessionDao.observeForDate(date.toString()).map { it?.toDomain() }
@@ -41,7 +44,9 @@ class CoachChatRepositoryImpl(
                 createdAtEpochMs = now,
                 updatedAtEpochMs = now,
             ).toEntity(),
-        )
+        ).also {
+            driveSyncTrigger.requestSync("chat:session_create")
+        }
     }
 
     override suspend fun appendMessage(
@@ -63,6 +68,7 @@ class CoachChatRepositoryImpl(
         sessionDao.getById(sessionId)?.let { existing ->
             sessionDao.update(existing.copy(updatedAtEpochMs = createdAtEpochMs))
         }
+        driveSyncTrigger.requestSync("chat:append_message")
         return id
     }
 
@@ -74,6 +80,7 @@ class CoachChatRepositoryImpl(
                     updatedAtEpochMs = System.currentTimeMillis(),
                 ),
             )
+            driveSyncTrigger.requestSync("chat:update_summary")
         }
     }
 }

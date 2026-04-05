@@ -75,7 +75,7 @@ class ModelDownloadWorker(
     ): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Downloading $modelName")
+            .setContentTitle("Preparing local AI")
             .setContentText("Downloading on device: $progressPercent%")
             .setOnlyAlertOnce(true)
             .setOngoing(true)
@@ -93,7 +93,7 @@ class ModelDownloadWorker(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Model downloads",
+            "Local AI downloads",
             NotificationManager.IMPORTANCE_LOW,
         )
         notificationManager.createNotificationChannel(channel)

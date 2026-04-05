@@ -1,6 +1,7 @@
 package com.dreef3.weightlossapp.app.media
 
 import android.util.Log
+import com.dreef3.weightlossapp.BuildConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -20,10 +21,12 @@ open class ModelDownloader(
             val tempFile = File(destination.absolutePath + ".part")
             modelStorage.modelDirectory.mkdirs()
 
-            Log.i(
-                TAG,
-                "Starting model download on thread=${Thread.currentThread().name} from ${model.url} to ${destination.absolutePath}",
-            )
+            if (BuildConfig.ENABLE_VERBOSE_LOGGING) {
+                Log.i(
+                    TAG,
+                    "Starting model download on thread=${Thread.currentThread().name} from ${model.url} to ${destination.absolutePath}",
+                )
+            }
 
             val connection = (URL(model.url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15_000
@@ -80,7 +83,9 @@ open class ModelDownloader(
                 throw IllegalStateException("Could not move temp model file into place")
             }
 
-            Log.i(TAG, "Model download complete size=${destination.length()}")
+            if (BuildConfig.ENABLE_VERBOSE_LOGGING) {
+                Log.i(TAG, "Model download complete size=${destination.length()}")
+            }
             destination
         }.onFailure { error ->
             Log.e(TAG, "Model download failed", error)

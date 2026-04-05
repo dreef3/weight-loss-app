@@ -5,17 +5,34 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+import java.util.Properties
+
+val signingProperties = Properties().apply {
+    val signingFile = rootProject.file("signing.properties")
+    if (signingFile.exists()) {
+        signingFile.inputStream().use(::load)
+    }
+}
+
+val appVersionCode = providers.gradleProperty("appVersionCode")
+    .orElse(providers.environmentVariable("APP_VERSION_CODE"))
+    .map(String::toInt)
+    .getOrElse(1)
+
+val appVersionName = providers.gradleProperty("appVersionName")
+    .orElse(providers.environmentVariable("APP_VERSION_NAME"))
+    .getOrElse("0.1.0")
+
 android {
     namespace = "com.dreef3.weightlossapp"
     compileSdk = 35
-    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.dreef3.weightlossapp"
         minSdk = 34
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,9 +40,33 @@ android {
         }
     }
 
+    signingConfigs {
+        if (signingProperties.isNotEmpty()) {
+            create("release") {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            buildConfigField("boolean", "ENABLE_VERBOSE_LOGGING", "true")
+            manifestPlaceholders["appUsesCleartextTraffic"] = "false"
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+            buildConfigField("boolean", "ENABLE_VERBOSE_LOGGING", "false")
+            manifestPlaceholders["appUsesCleartextTraffic"] = "false"
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -38,20 +79,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+
+    lint {
+        checkReleaseBuilds = true
+        abortOnError = true
+        disable += "NullSafeMutableLiveData"
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     packaging {
@@ -84,6 +126,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+    implementation("com.google.android.gms:play-services-auth:21.4.0")
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -95,9 +138,6 @@ dependencies {
     implementation("com.google.ai.edge.litert:litert:2.1.0")
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.0")
     implementation("com.google.android.gms:play-services-tflite-java:16.4.0") {
-        exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
-    }
-    implementation("com.google.android.gms:play-services-tflite-gpu:16.4.0") {
         exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
     }
     implementation("com.google.android.gms:play-services-tflite-support:16.4.0") {
