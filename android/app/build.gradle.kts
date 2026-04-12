@@ -41,7 +41,15 @@ android {
     }
 
     signingConfigs {
-        if (signingProperties.isNotEmpty()) {
+        if (signingProperties.getProperty("debugStoreFile") != null) {
+            create("customDebug") {
+                storeFile = rootProject.file(signingProperties.getProperty("debugStoreFile"))
+                storePassword = signingProperties.getProperty("debugStorePassword")
+                keyAlias = signingProperties.getProperty("debugKeyAlias")
+                keyPassword = signingProperties.getProperty("debugKeyPassword")
+            }
+        }
+        if (signingProperties.getProperty("storeFile") != null) {
             create("release") {
                 storeFile = rootProject.file(signingProperties.getProperty("storeFile"))
                 storePassword = signingProperties.getProperty("storePassword")
@@ -57,6 +65,9 @@ android {
             versionNameSuffix = "-debug"
             buildConfigField("boolean", "ENABLE_VERBOSE_LOGGING", "true")
             manifestPlaceholders["appUsesCleartextTraffic"] = "false"
+            if (signingConfigs.findByName("customDebug") != null) {
+                signingConfig = signingConfigs.getByName("customDebug")
+            }
         }
         release {
             isMinifyEnabled = true
