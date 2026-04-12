@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   validate-pr-title:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR title
@@ -22,6 +24,7 @@ jobs:
 
   build-and-test:
     needs: validate-pr-title
+    if: always() && (github.event_name != 'pull_request' || needs.validate-pr-title.result == 'success')
     runs-on: ubuntu-latest
 
     defaults:
@@ -47,8 +50,40 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$DEBUG_KEYSTORE_BASE64"
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+
+      - name: Create signing.properties
+        env:
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
+        run: |
+          test -n "$DEBUG_KEYSTORE_PASSWORD"
+          test -n "$DEBUG_KEY_ALIAS"
+          test -n "$DEBUG_KEY_PASSWORD"
+          cat > signing.properties <<EOF
+          debugStoreFile=debug.keystore
+          debugStorePassword=$DEBUG_KEYSTORE_PASSWORD
+          debugKeyAlias=$DEBUG_KEY_ALIAS
+          debugKeyPassword=$DEBUG_KEY_PASSWORD
+          EOF
+
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zvaka-debug-apk
+          if-no-files-found: error
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/output-metadata.json
