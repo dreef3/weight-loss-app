@@ -31,7 +31,6 @@ if(DEFINED ANDROID_ABI)
 endif()
 
 set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/../../../../third_party/llama.cpp)
-set(GGML_VULKAN_EXTRA_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/third_party)
 add_subdirectory(${LLAMA_SRC} build-llama)
 add_subdirectory(${LLAMA_SRC}/tools/mtmd build-mtmd)
 
