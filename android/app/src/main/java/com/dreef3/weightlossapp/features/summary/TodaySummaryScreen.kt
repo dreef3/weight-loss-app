@@ -162,11 +162,6 @@ fun TodaySummaryScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp),
             ) {
                 item {
-                    state.summary?.let { summary ->
-                        OverBudgetNotice(summary.remainingCalories < 0)
-                    }
-                }
-                item {
                     state.errorMessage?.let { Text(it) }
                 }
                 if (state.processingCount > 0) {

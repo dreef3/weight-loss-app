@@ -39,9 +39,10 @@ fun SummaryCards(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpenTrends),
+        // Use a softer, non-blaming accent when over budget (primaryContainer) instead of error
         colors = CardDefaults.cardColors(
             containerColor = if (isOverBudget) {
-                MaterialTheme.colorScheme.errorContainer
+                MaterialTheme.colorScheme.primaryContainer
             } else {
                 MaterialTheme.colorScheme.surfaceContainerLow
             },
@@ -64,36 +65,35 @@ fun SummaryCards(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = if (isOverBudget) "Over budget today" else "Remaining today",
+                    // neutral title to avoid repetition
+                    text = "Today",
                     style = MaterialTheme.typography.titleMedium,
                     color = if (isOverBudget) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
                 Text(
+                    // Show a clear, positive number with units and context when over budget
                     text = if (isOverBudget) {
                         "${kotlin.math.abs(summary.remainingCalories)} kcal over"
                     } else {
-                        summary.remainingCalories.toString()
+                        "${summary.remainingCalories} kcal left"
                     },
                     style = MaterialTheme.typography.displayMedium,
                     color = if (isOverBudget) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
                 )
                 Text(
-                    text = if (isOverBudget) {
-                        "Consumed ${summary.consumedCalories} kcal. Over your daily target."
-                    } else {
-                        "Consumed ${summary.consumedCalories} kcal"
-                    },
+                    // keep consumed summary neutral
+                    text = "Consumed ${summary.consumedCalories} kcal",
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (isOverBudget) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
@@ -109,13 +109,14 @@ private fun CalorieRing(
     remainingCalories: Int,
 ) {
     val isOverBudget = remainingCalories < 0
+    // Use primary colors for a softer, non-blaming accent when over budget
     val trackColor = if (isOverBudget) {
-        MaterialTheme.colorScheme.error.copy(alpha = 0.20f)
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val progressColor = if (isOverBudget) {
-        MaterialTheme.colorScheme.error
+        MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.primary
     }
@@ -148,17 +149,17 @@ private fun CalorieRing(
                     remainingCalories.toString()
                 },
                 style = MaterialTheme.typography.headlineMedium,
-                color = if (isOverBudget) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-            Text(
-                text = if (isOverBudget) "kcal over" else "kcal left",
+            color = if (isOverBudget) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
+        Text(
+                text = if (isOverBudget) "kcal above target" else "kcal left",
                 style = MaterialTheme.typography.labelMedium,
                 color = if (isOverBudget) {
-                    MaterialTheme.colorScheme.error
+                    MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
