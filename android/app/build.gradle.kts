@@ -68,7 +68,7 @@ android {
 
     defaultConfig {
         applicationId = "com.dreef3.weightlossapp"
-        minSdk = 34
+        minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
