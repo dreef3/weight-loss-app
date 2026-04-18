@@ -67,7 +67,8 @@ fun OnboardingScreenRoute(
     var onboardingDriveMessage by remember { mutableStateOf<String?>(null) }
     var onboardingNotificationMessage by remember { mutableStateOf<String?>(null) }
     var onboardingHealthConnectMessage by remember { mutableStateOf<String?>(null) }
-    val healthConnectAvailable = remember(container) { container.healthConnectCaloriesExporter.isAvailable() }
+    val healthConnectAvailable = container.healthConnectCaloriesExporter.isAvailable()
+    val healthConnectNeedsProviderSetup = container.healthConnectCaloriesExporter.needsProviderSetup()
 
     LaunchedEffect(state.isCompleted) {
         if (state.isCompleted) onCompleted()
@@ -164,15 +165,27 @@ fun OnboardingScreenRoute(
         onSexChanged = { value -> vm.updateForm { it.copy(sex = value) } },
         onActivityLevelChanged = { value -> vm.updateForm { it.copy(activityLevel = value) } },
         onHealthConnectCaloriesChanged = { enabled ->
-            if (!healthConnectAvailable) {
+            if (!enabled) {
+                onboardingHealthConnectMessage = null
+                vm.updateForm { it.copy(healthConnectCaloriesEnabled = false) }
+            } else if (healthConnectAvailable) {
+                scope.launch {
+                    if (container.healthConnectCaloriesExporter.hasWritePermission()) {
+                        onboardingHealthConnectMessage = "Health Connect permission is already granted."
+                        vm.updateForm { it.copy(healthConnectCaloriesEnabled = true) }
+                    } else {
+                        onboardingHealthConnectMessage = null
+                        vm.updateForm { it.copy(healthConnectCaloriesEnabled = true) }
+                        healthConnectPermissionLauncher.launch(container.healthConnectCaloriesExporter.requiredPermissions())
+                    }
+                }
+            } else if (healthConnectNeedsProviderSetup) {
+                onboardingHealthConnectMessage = "Opening Health Connect so you can finish setup and grant access."
+                vm.updateForm { it.copy(healthConnectCaloriesEnabled = false) }
+                container.healthConnectCaloriesExporter.openProviderSetup()
+            } else {
                 onboardingHealthConnectMessage = "Health Connect is not available on this device."
                 vm.updateForm { it.copy(healthConnectCaloriesEnabled = false) }
-            } else {
-                onboardingHealthConnectMessage = null
-                vm.updateForm { it.copy(healthConnectCaloriesEnabled = enabled) }
-                if (enabled) {
-                    healthConnectPermissionLauncher.launch(container.healthConnectCaloriesExporter.requiredPermissions())
-                }
             }
         },
         onBackFromProfile = vm::backFromProfile,
@@ -192,6 +205,7 @@ fun OnboardingScreenRoute(
         onboardingNotificationMessage = onboardingNotificationMessage,
         onboardingHealthConnectMessage = onboardingHealthConnectMessage,
         healthConnectAvailable = healthConnectAvailable,
+        healthConnectNeedsProviderSetup = healthConnectNeedsProviderSetup,
     )
 }
 
@@ -218,6 +232,7 @@ fun OnboardingScreen(
     onboardingNotificationMessage: String?,
     onboardingHealthConnectMessage: String?,
     healthConnectAvailable: Boolean,
+    healthConnectNeedsProviderSetup: Boolean,
 ) {
     Column(
         modifier = Modifier
@@ -246,6 +261,7 @@ fun OnboardingScreen(
                 onContinue = onSubmitProfile,
                 onboardingHealthConnectMessage = onboardingHealthConnectMessage,
                 healthConnectAvailable = healthConnectAvailable,
+                healthConnectNeedsProviderSetup = healthConnectNeedsProviderSetup,
             )
             OnboardingStep.BudgetPreview -> BudgetPreviewStep(
                 firstName = state.form.firstName,
@@ -347,6 +363,7 @@ private fun ProfileStep(
     onContinue: () -> Unit,
     onboardingHealthConnectMessage: String?,
     healthConnectAvailable: Boolean,
+    healthConnectNeedsProviderSetup: Boolean,
 ) {
     StepCard {
         Text(
@@ -363,6 +380,7 @@ private fun ProfileStep(
             onSexChanged = onSexChanged,
             onActivityLevelChanged = onActivityLevelChanged,
             healthConnectAvailable = healthConnectAvailable,
+            healthConnectNeedsProviderSetup = healthConnectNeedsProviderSetup,
             onHealthConnectCaloriesChanged = onHealthConnectCaloriesChanged,
         )
         onboardingHealthConnectMessage?.let { message ->

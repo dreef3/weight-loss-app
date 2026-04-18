@@ -1,6 +1,9 @@
 package com.dreef3.weightlossapp.app.health
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -19,13 +22,40 @@ class HealthConnectCaloriesExporter(
 ) {
     private val nutritionWritePermission = HealthPermission.getWritePermission(NutritionRecord::class)
 
+    fun sdkStatus(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            HealthConnectClient.sdkStatus(context)
+        } else {
+            HealthConnectClient.sdkStatus(context, HEALTH_CONNECT_PROVIDER_PACKAGE)
+        }
+
     fun isAvailable(): Boolean =
-        HealthConnectClient.sdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        sdkStatus() == HealthConnectClient.SDK_AVAILABLE
+
+    fun needsProviderSetup(): Boolean =
+        sdkStatus() == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED
 
     fun permissionsLauncherContract() =
         PermissionController.createRequestPermissionResultContract()
 
     fun requiredPermissions(): Set<String> = setOf(nutritionWritePermission)
+
+    fun openProviderSetup() {
+        val marketIntent = Intent(Intent.ACTION_VIEW).apply {
+            setPackage(PLAY_STORE_PACKAGE)
+            data = Uri.parse("market://details?id=$HEALTH_CONNECT_PROVIDER_PACKAGE&url=healthconnect%3A%2F%2Fonboarding")
+            putExtra("overlay", true)
+            putExtra("callerId", context.packageName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse("https://play.google.com/store/apps/details?id=$HEALTH_CONNECT_PROVIDER_PACKAGE")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(marketIntent) }
+            .recoverCatching { context.startActivity(fallbackIntent) }
+            .getOrThrow()
+    }
 
     suspend fun hasWritePermission(): Boolean {
         if (!isAvailable()) return false
@@ -75,4 +105,9 @@ class HealthConnectCaloriesExporter(
     private fun zoneOffsetFor(instant: Instant) = ZoneId.systemDefault().rules.getOffset(instant)
 
     private fun clientRecordId(entryId: Long): String = "weightlossapp-food-entry-$entryId"
+
+    companion object {
+        private const val HEALTH_CONNECT_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
+        private const val PLAY_STORE_PACKAGE = "com.android.vending"
+    }
 }

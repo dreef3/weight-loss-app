@@ -35,6 +35,7 @@ fun OnboardingFields(
     onSexChanged: (Sex) -> Unit,
     onActivityLevelChanged: (ActivityLevel) -> Unit,
     healthConnectAvailable: Boolean = false,
+    healthConnectNeedsProviderSetup: Boolean = false,
     onHealthConnectCaloriesChanged: ((Boolean) -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -134,14 +135,16 @@ fun OnboardingFields(
                     Text(
                         text = if (healthConnectAvailable) {
                             "Opt in to publish each saved meal's calories to Health Connect. You can change this later in Settings."
+                        } else if (healthConnectNeedsProviderSetup) {
+                            "Health Connect needs setup or an update before this app can request access."
                         } else {
-                            "Health Connect is not available on this device right now."
+                            "Health Connect is not available on this device."
                         },
                     )
                 }
                 Switch(
                     checked = state.healthConnectCaloriesEnabled,
-                    enabled = healthConnectAvailable,
+                    enabled = healthConnectAvailable || healthConnectNeedsProviderSetup,
                     onCheckedChange = onHealthConnectCaloriesChanged,
                 )
             }
