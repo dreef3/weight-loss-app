@@ -79,4 +79,4 @@ jobs:
           packageName: com.dreef3.weightlossapp
           releaseFiles: release-assets/app-release.aab
           mappingFile: release-assets/mapping.txt
-          tracks: ${{ inputs.tracks }}
+          track: ${{ inputs.tracks }}
