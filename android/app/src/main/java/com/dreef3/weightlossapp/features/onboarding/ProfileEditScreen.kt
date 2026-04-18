@@ -76,6 +76,7 @@ fun ProfileEditScreen(
     val budgetPeriods by container.profileRepository.observeBudgetPeriods().collectAsStateWithLifecycle(initialValue = emptyList())
     val driveSyncState by container.preferences.driveSyncState.collectAsStateWithLifecycle(initialValue = DriveSyncState())
     val trainingDataSharingEnabled by container.preferences.trainingDataSharingEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val healthConnectCaloriesEnabled by container.preferences.healthConnectCaloriesEnabled.collectAsStateWithLifecycle(initialValue = false)
     val coachModel by container.preferences.coachModel.collectAsStateWithLifecycle(initialValue = CoachModel.Gemma)
     val gemmaBackend by container.preferences.gemmaBackend.collectAsStateWithLifecycle(initialValue = GemmaBackend.CPU)
     val calorieModel by container.preferences.calorieEstimationModel.collectAsStateWithLifecycle(initialValue = CalorieEstimationModel.Gemma)
@@ -97,6 +98,7 @@ fun ProfileEditScreen(
         .observeState(selectedCoachDescriptor)
         .collectAsStateWithLifecycle(initialValue = ModelDownloadState())
     val selectedCoachReady = container.modelStorage.hasUsableModel(selectedCoachDescriptor)
+    val healthConnectAvailable = remember(container) { container.healthConnectCaloriesExporter.isAvailable() }
 
     var form by remember { mutableStateOf(OnboardingFormState()) }
     var hasLoaded by remember { mutableStateOf(false) }
@@ -110,8 +112,23 @@ fun ProfileEditScreen(
     var driveStatusMessage by remember { mutableStateOf<String?>(null) }
     var pendingDriveAction by remember { mutableStateOf<PendingDriveAction?>(null) }
     var showAdvancedSettings by remember { mutableStateOf(false) }
+    var healthConnectStatusMessage by remember { mutableStateOf<String?>(null) }
     val currentBudget = budgetPeriods.maxByOrNull { it.effectiveFromDate }?.caloriesPerDay
     val requiredResetName = profile?.firstName?.trim().orEmpty()
+
+    val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
+        contract = container.healthConnectCaloriesExporter.permissionsLauncherContract(),
+    ) { granted ->
+        scope.launch {
+            val allowed = granted.containsAll(container.healthConnectCaloriesExporter.requiredPermissions())
+            container.preferences.setHealthConnectCaloriesEnabled(allowed)
+            healthConnectStatusMessage = if (allowed) {
+                "Health Connect calorie sync is on. New and edited meals will be published there."
+            } else {
+                "Health Connect permission was not granted, so calorie sync stays off."
+            }
+        }
+    }
 
     suspend fun runDriveAction(
         action: PendingDriveAction,
@@ -266,6 +283,8 @@ fun ProfileEditScreen(
             onWeightChanged = { value -> form = form.copy(weightKg = value.filter(Char::isDigit)) },
             onSexChanged = { form = form.copy(sex = it) },
             onActivityLevelChanged = { form = form.copy(activityLevel = it) },
+            healthConnectAvailable = healthConnectAvailable,
+            onHealthConnectCaloriesChanged = { enabled -> form = form.copy(healthConnectCaloriesEnabled = enabled) },
         )
         if (errors.isNotEmpty()) {
             errors.forEach { issue ->
@@ -334,6 +353,56 @@ fun ProfileEditScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f).padding(end = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = "Publish calories to Health Connect",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = if (healthConnectAvailable) {
+                                    "When enabled, each saved meal publishes its calorie total to Health Connect as a nutrition record."
+                                } else {
+                                    "Health Connect is not available on this device."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = healthConnectCaloriesEnabled,
+                            enabled = healthConnectAvailable,
+                            onCheckedChange = { enabled ->
+                                scope.launch {
+                                    if (!healthConnectAvailable) {
+                                        healthConnectStatusMessage = "Health Connect is not available on this device."
+                                        container.preferences.setHealthConnectCaloriesEnabled(false)
+                                    } else if (!enabled) {
+                                        container.preferences.setHealthConnectCaloriesEnabled(false)
+                                        healthConnectStatusMessage = "Health Connect calorie sync is off. Existing records remain in Health Connect."
+                                    } else {
+                                        healthConnectStatusMessage = null
+                                        healthConnectPermissionLauncher.launch(container.healthConnectCaloriesExporter.requiredPermissions())
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    if (!healthConnectStatusMessage.isNullOrBlank()) {
+                        Text(
+                            text = healthConnectStatusMessage.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

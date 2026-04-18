@@ -76,6 +76,12 @@ class AppPreferences(
         }
         .map { prefs -> prefs[Keys.TrainingDataSharingEnabled] ?: false }
 
+    val healthConnectCaloriesEnabled: Flow<Boolean> = dataStore.data
+        .catch {
+            if (it is IOException) emit(emptyPreferences()) else throw it
+        }
+        .map { prefs -> prefs[Keys.HealthConnectCaloriesEnabled] ?: false }
+
     val driveSyncState: Flow<DriveSyncState> = dataStore.data
         .catch {
             if (it is IOException) emit(emptyPreferences()) else throw it
@@ -136,6 +142,14 @@ class AppPreferences(
             prefs[Keys.TrainingDataSharingEnabled] = value
         }
         driveSyncTrigger.requestSync("preferences:training_data_sharing")
+    }
+
+    suspend fun setHealthConnectCaloriesEnabled(value: Boolean) {
+        if (healthConnectCaloriesEnabled.first() == value) return
+        dataStore.edit { prefs ->
+            prefs[Keys.HealthConnectCaloriesEnabled] = value
+        }
+        driveSyncTrigger.requestSync("preferences:health_connect_calories")
     }
 
     suspend fun readCalorieEstimationModel(): CalorieEstimationModel =
@@ -230,6 +244,7 @@ class AppPreferences(
             calorieEstimationModelStorageKey = readCalorieEstimationModel().storageKey,
             gemmaBackendStorageKey = readGemmaBackend().storageKey,
             trainingDataSharingEnabled = trainingDataSharingEnabled.first(),
+            healthConnectCaloriesEnabled = healthConnectCaloriesEnabled.first(),
         )
 
     suspend fun restoreUserBackupSnapshot(snapshot: UserPreferenceBackupSnapshot) {
@@ -240,6 +255,7 @@ class AppPreferences(
             prefs[Keys.CalorieEstimationModel] = snapshot.calorieEstimationModelStorageKey
             prefs[Keys.GemmaBackend] = snapshot.gemmaBackendStorageKey
             prefs[Keys.TrainingDataSharingEnabled] = snapshot.trainingDataSharingEnabled
+            prefs[Keys.HealthConnectCaloriesEnabled] = snapshot.healthConnectCaloriesEnabled
         }
     }
 
@@ -256,6 +272,7 @@ class AppPreferences(
         val GemmaBackend = stringPreferencesKey("gemma_backend")
         val CalorieEstimationModel = stringPreferencesKey("calorie_estimation_model")
         val TrainingDataSharingEnabled = booleanPreferencesKey("training_data_sharing_enabled")
+        val HealthConnectCaloriesEnabled = booleanPreferencesKey("health_connect_calories_enabled")
         val GoogleDriveSyncEnabled = booleanPreferencesKey("google_drive_sync_enabled")
         val GoogleDriveAccountEmail = stringPreferencesKey("google_drive_account_email")
         val GoogleDriveBackupFileId = stringPreferencesKey("google_drive_backup_file_id")

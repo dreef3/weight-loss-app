@@ -20,6 +20,7 @@ import com.dreef3.weightlossapp.domain.usecase.SaveUserProfileUseCase
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -138,6 +139,25 @@ class OnboardingViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.isCompleted)
+    }
+
+    @Test
+    fun completeSetupPersistsHealthConnectOptIn() = runTest(dispatcher) {
+        val repository = FakeProfileRepository()
+        val storage = ModelStorage(modelDirectoryOverride = kotlin.io.path.createTempDirectory().toFile())
+        val preferences = testPreferences()
+        val viewModel = createViewModel(
+            repository = repository,
+            storage = storage,
+            modelController = FakeModelDownloadController(),
+            preferences = preferences,
+        )
+
+        viewModel.updateForm { it.copy(healthConnectCaloriesEnabled = true) }
+        viewModel.completeSetup()
+        advanceUntilIdle()
+
+        assertTrue(preferences.healthConnectCaloriesEnabled.dropWhile { !it }.first())
     }
 
     private fun createViewModel(
