@@ -226,6 +226,7 @@ private class FakeModelDownloadController : ModelDownloadController {
 
     override fun enqueueIfNeeded(model: ModelDescriptor) {
         enqueueCalls += 1
+        state.value = ModelDownloadState(isDownloading = true, progressPercent = 0)
     }
 
     override fun observeState(model: ModelDescriptor): Flow<ModelDownloadState> = state
