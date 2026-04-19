@@ -89,10 +89,10 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            ./android/gradlew installDebug installDebugAndroidTest --no-daemon
+            ./android/gradlew -p android installDebug installDebugAndroidTest --no-daemon
             adb shell run-as com.dreef3.weightlossapp.debug mkdir -p cache/models
             adb shell "run-as com.dreef3.weightlossapp.debug sh -c 'cat > cache/models/gemma-4-E2B-it.litertlm'" < android/app/build/test-models/gemma-4-E2B-it.litertlm
-            ./android/gradlew connectedDebugAndroidTest --no-daemon \
+            ./android/gradlew -p android connectedDebugAndroidTest --no-daemon \
               -Pandroid.testInstrumentationRunnerArguments.class=com.dreef3.weightlossapp.chat.LiteRtDietChatEngineInstrumentedSmokeTest \
               -Pandroid.testInstrumentationRunnerArguments.runRealGemmaTests=true \
               -Pandroid.testInstrumentationRunnerArguments.gemmaModelPath=/data/user/0/com.dreef3.weightlossapp.debug/cache/models/gemma-4-E2B-it.litertlm
