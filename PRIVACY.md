@@ -2,51 +2,52 @@
 
 Last updated: 2026-04-19
 
-This Privacy Policy explains what data Zvaka (the “app”) collects, how it is used, and the choices you have about your data. The app stores most data locally on your device by default. Where features are optional or involve remote transfer, we describe those choices below.
+This Privacy Policy describes the categories of personal data collected by Zvaka (the "App"), the purposes for which such data is used, the circumstances under which it may be disclosed, and the choices available to users.
 
-1. Data We Collect
+1. Data Collected
 
-- Profile information you enter (e.g., name, age, height, weight, sex, activity level).
-- Meal tracking data created by you or the app: food photos, meal descriptions/labels, estimated or manually-entered calories, timestamps.
-- Coach conversation history and app preferences (onboarding status, selected estimation mode, etc.).
+- Personal information provided by the user: name, age, height, weight, sex, activity level, and contact information (if supplied).
+- User-generated content: food photographs, meal descriptions and labels, manually-entered or estimated calorie values, and timestamps.
+- Health and fitness data: calorie totals and other fitness-related information entered into the App or synchronized via Health Connect.
+- Device and technical information: device identifiers, installation identifiers, crash reports, and diagnostic logs.
+- App usage and preferences: coach conversation history, settings, and other preferences.
 
-2. How Data Is Stored
+2. Use of Data
 
-- By default, your profile, meal history, photos, coach chats, and local AI model choices are stored only on your device.
+We use collected data to provide and improve the App's functionality, including calorie estimation, meal history and summaries, optional coaching features, and backup and restore. Data is also used for analytics, fraud prevention, personalization, and developer communications.
 
-3. Optional Features That Transfer Data
+3. Storage, Backups, and Integrations
 
-- Google Drive backup (optional): When enabled, the app backs up app data to your Google Drive app-specific storage (the appDataFolder). Backups may include profile data, meal history, coach chats, app preferences, and saved meal photos.
-- Health Connect (optional): When enabled, the app can write calorie totals as nutrition records to Google Health Connect.
-- Model improvement sharing (optional): When enabled, the app will upload a downscaled copy of meal photos and the associated detected meal description and calorie estimate to our servers for the purpose of improving on-device AI models and research.
+- Local storage: By default, user data is stored on the user's device.
+- Google Drive backup (optional): When enabled, backups are stored in the user's Google Drive appDataFolder and may include profile information, meal history, coach chats, preferences, and saved meal photographs. App model files are not included in Drive backups.
+- Health Connect (optional): When enabled, the App may write calorie totals to Google Health Connect as nutrition records.
 
-4. Model Training Uploads and Your Choices
+4. Model Improvement Uploads
 
-- What is uploaded: If you enable Model improvement sharing, the app will upload a reduced-resolution (downscaled) version of meal photos together with the detected meal description (the text the app generated or that you confirmed) and the calorie estimate. These uploads are used only to improve our machine learning models and for research on food recognition and calorie estimation.
-- Opt-out: Model improvement sharing is disabled by default. You can opt in or out at any time from the app Settings → Data & Privacy → Model improvement sharing. If you opt out, no photos or meal descriptions will be uploaded for model training.
-- Retention and deletion: Uploaded items used for model training will be retained according to our data retention policy and may be deleted on request; contact zvaka.reply@gmail.com to request deletion of your uploaded training data.
+If you enable the "Model improvement sharing" setting, the App will upload a reduced-resolution copy of meal photographs together with the detected meal description and calorie estimate to the developer's servers solely for the purpose of improving on-device machine learning models and related research. Model improvement sharing is disabled by default. You may enable or disable this feature at any time in Settings → Data & Privacy → Model improvement sharing. Uploaded items will be retained in accordance with our data retention policy and may be deleted on request. To request deletion of uploaded training data, contact: zvaka.reply@gmail.com
 
-5. Data Sharing and Sale
+5. Sharing and Sale of Data
 
-- We do not sell your personal data. Uploaded training data is used for model improvement and research and is not sold to third parties.
+We do not sell personal data. Data is shared only as described in this Policy: for example, backups to your Google Drive when enabled, and model improvement uploads when you have expressly opted in. We may disclose data to comply with legal obligations or to protect the rights, property, or safety of users or others.
 
 6. Security
 
-- We use reasonable technical and organizational measures to protect data in transit and at rest. For example, uploads for model improvement are sent over encrypted channels.
+We implement reasonable administrative, technical, and physical safeguards designed to protect your data. Data transmitted to our servers is encrypted in transit. No security measure is absolute, and we cannot guarantee the security of information.
 
-7. How to Delete or Export Your Data
+7. User Controls and Rights
 
-- You can erase local app data from within the app. You can also disable Google Drive backup and the Model improvement sharing option in Settings.
-- To request export or deletion of data stored on our servers (for example, uploaded training photos or meal descriptions), contact: zvaka.reply@gmail.com
+- You may disable Google Drive backup and Model improvement sharing in the App's settings.
+- You may erase local App data from within the App.
+- To request export or deletion of data stored on our servers, contact: zvaka.reply@gmail.com
 
-8. Contact
+8. Data Safety (Google Play)
 
-If you have questions about this policy or your data, contact: zvaka.reply@gmail.com
+The App may collect the following categories of data, where applicable: Photos and videos; Health & fitness data; Personal information (e.g., name, email, user identifiers); Device or other identifiers; App information and performance (crash logs and diagnostics); and App activity (user-generated content). These data categories are collected and used for the purposes described in this Policy. Data transmitted by the App is encrypted in transit.
 
-9. Changes to This Policy
+9. Changes to this Policy
 
-We may update this policy from time to time. If we make material changes, we will update the date at the top of this file and provide notice in the app when appropriate.
+We may update this Policy from time to time. Material changes will be reflected by updating the "Last updated" date and, where appropriate, by providing notice within the App.
 
----
+10. Contact and Legal
 
-This privacy policy is intended to be a concise, user-facing description. It does not create any legal rights beyond those described here or in a formal agreement where applicable.
+For questions about this Policy or to exercise your rights, contact: zvaka.reply@gmail.com
