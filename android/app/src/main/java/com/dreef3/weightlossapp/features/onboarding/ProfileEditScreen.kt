@@ -59,6 +59,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 private enum class PendingDriveAction {
@@ -125,9 +126,13 @@ fun ProfileEditScreen(
     ) { granted ->
         scope.launch {
             val allowed = granted.containsAll(container.healthConnectCaloriesExporter.requiredPermissions())
+            val wasEnabled = container.preferences.healthConnectCaloriesEnabled.first()
             container.preferences.setHealthConnectCaloriesEnabled(allowed)
             healthConnectStatusMessage = if (allowed) {
-                "Health Connect calorie sync is on. New and edited meals will be published there."
+                if (!wasEnabled) {
+                    container.healthConnectBackfillService.backfillRecentEntries()
+                }
+                "Health Connect calorie sync is on. New and edited meals will be published there, and the last 7 days were backfilled."
             } else {
                 "Health Connect permission was not granted, so calorie sync stays off."
             }
@@ -396,8 +401,12 @@ fun ProfileEditScreen(
                                     healthConnectStatusMessage = "Health Connect calorie sync is off. Existing records remain in Health Connect."
                                 } else if (healthConnectAvailable) {
                                     if (container.healthConnectCaloriesExporter.hasWritePermission()) {
+                                        val wasEnabled = container.preferences.healthConnectCaloriesEnabled.first()
                                         container.preferences.setHealthConnectCaloriesEnabled(true)
-                                        healthConnectStatusMessage = "Health Connect permission is already granted. New and edited meals will be published there."
+                                        if (!wasEnabled) {
+                                            container.healthConnectBackfillService.backfillRecentEntries()
+                                        }
+                                        healthConnectStatusMessage = "Health Connect permission is already granted. New and edited meals will be published there, and the last 7 days were backfilled."
                                     } else {
                                         healthConnectStatusMessage = null
                                         healthConnectPermissionLauncher.launch(container.healthConnectCaloriesExporter.requiredPermissions())
