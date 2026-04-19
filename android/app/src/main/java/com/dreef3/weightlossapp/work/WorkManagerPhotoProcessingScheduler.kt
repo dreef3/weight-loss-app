@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.dreef3.weightlossapp.domain.usecase.PhotoProcessingScheduler
 
@@ -23,6 +24,7 @@ class WorkManagerPhotoProcessingScheduler(
                     .putLong(PhotoProcessingWorker.KEY_CAPTURED_AT_EPOCH_MS, capturedAtEpochMs)
                     .build(),
             )
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(

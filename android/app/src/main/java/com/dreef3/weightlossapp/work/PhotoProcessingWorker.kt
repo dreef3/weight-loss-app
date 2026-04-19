@@ -15,8 +15,11 @@ import com.dreef3.weightlossapp.domain.model.ConfirmationStatus
 import com.dreef3.weightlossapp.domain.model.FoodEntry
 import com.dreef3.weightlossapp.domain.model.FoodEntrySource
 import com.dreef3.weightlossapp.domain.model.FoodEntryStatus
+import com.dreef3.weightlossapp.inference.FoodEstimationError
+import com.dreef3.weightlossapp.inference.FoodEstimationException
 import com.dreef3.weightlossapp.inference.FoodEstimationRequest
 import java.time.Instant
+import java.util.concurrent.CancellationException
 
 class PhotoProcessingWorker(
     appContext: Context,
@@ -47,6 +50,9 @@ class PhotoProcessingWorker(
                 capturedAtEpochMs = capturedAtEpochMs,
             ),
         )
+        if (shouldRetryAfterFailure(result.exceptionOrNull())) {
+            return Result.retry()
+        }
 
         val entry = result.fold(
             onSuccess = { estimation ->
@@ -81,7 +87,7 @@ class PhotoProcessingWorker(
                     source = FoodEntrySource.AiEstimate,
                     entryStatus = FoodEntryStatus.NeedsManual,
                     debugInteractionLog = when (throwable) {
-                        is com.dreef3.weightlossapp.inference.FoodEstimationException -> throwable.debugInteractionLog
+                        is FoodEstimationException -> throwable.debugInteractionLog
                         else -> throwable.stackTraceToString()
                     },
                 )
@@ -134,5 +140,10 @@ class PhotoProcessingWorker(
 
         private const val CHANNEL_ID = "photo_estimation"
         private const val NOTIFICATION_ID = 1002
+
+        internal fun shouldRetryAfterFailure(throwable: Throwable?): Boolean =
+            throwable is CancellationException ||
+                throwable is InterruptedException ||
+                (throwable is FoodEstimationException && throwable.error == FoodEstimationError.InferenceTimeout)
     }
 }
