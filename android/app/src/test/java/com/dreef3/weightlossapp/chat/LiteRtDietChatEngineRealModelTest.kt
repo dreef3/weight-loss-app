@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
+import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -28,6 +29,17 @@ import java.time.LocalDate
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class LiteRtDietChatEngineRealModelTest {
+    companion object {
+        @JvmStatic
+        @BeforeClass
+        fun loadNativeLibraryIfConfigured() {
+            val nativePath = System.getenv("LITERTLM_JNI_PATH")?.takeIf { it.isNotBlank() } ?: return
+            val nativeFile = File(nativePath)
+            require(nativeFile.exists()) { "Configured LITERTLM_JNI_PATH does not exist: $nativePath" }
+            System.load(nativeFile.absolutePath)
+        }
+    }
+
     @Test
     fun logsNewTextMealWithRealModel() = runBlocking {
         val engine = createEngine(entries = emptyList())
