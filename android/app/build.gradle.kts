@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 import java.util.Properties
@@ -168,6 +170,7 @@ android {
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.01.00")
+    val firebaseBom = platform("com.google.firebase:firebase-bom:34.12.0")
     val roomVersion = "2.8.4"
     val healthConnectVersion = "1.1.0"
 
@@ -190,6 +193,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
     implementation("com.google.android.gms:play-services-auth:21.4.0")
     implementation("com.google.android.play:integrity:1.6.0")
+    implementation(firebaseBom)
+    implementation("com.google.firebase:firebase-crashlytics")
 
     implementation(composeBom)
     androidTestImplementation(composeBom)

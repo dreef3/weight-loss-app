@@ -17,7 +17,8 @@ fast photo logging without premium upsells.
 2. Install Android Studio or the Android SDK for API 35
 3. Open the `android/` project
 4. Put the LiteRT-LM compatible model file at the app-private runtime path `files/models/gemma-3n-e2b-it.litertlm`
-5. If you are working outside Android Studio, set `ANDROID_SDK_ROOT` and use the checked-in Gradle Wrapper under `android/`
+5. Add your Firebase config file at `android/app/google-services.json` (Crashlytics requires this)
+6. If you are working outside Android Studio, set `ANDROID_SDK_ROOT` and use the checked-in Gradle Wrapper under `android/`
 
 ## Commands
 
