@@ -26,10 +26,7 @@ RUN yes | sdkmanager --licenses && \
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
-
-# OpenCode
-RUN curl -fsSL https://opencode.ai/install | OPENCODE_INSTALL=/usr/local sh
+# Claude Code + OpenCode CLIs
+RUN npm install -g @anthropic-ai/claude-code opencode-ai
 
 WORKDIR /workspace
