@@ -2,8 +2,10 @@ package com.dreef3.weightlossapp.features.trends
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -25,8 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.domain.model.FoodEntry
-import com.dreef3.weightlossapp.domain.model.TrendWindow
 import com.dreef3.weightlossapp.domain.model.TrendWindowType
+import com.dreef3.weightlossapp.domain.model.TrendWindow
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -145,7 +148,10 @@ private fun TrendChartCard(
                 text = if (window.windowType == TrendWindowType.Last7Days) "Daily calories, 7 days" else "Daily calories, 30 days",
                 style = MaterialTheme.typography.titleLarge,
             )
-            SimpleTrendBars(dailyStats = dailyStats)
+            SimpleTrendBars(
+                dailyStats = dailyStats,
+                windowType = window.windowType,
+            )
         }
     }
 }
@@ -153,6 +159,7 @@ private fun TrendChartCard(
 @Composable
 private fun SimpleTrendBars(
     dailyStats: List<TrendDayStat>,
+    windowType: TrendWindowType,
 ) {
     if (dailyStats.isEmpty()) {
         Text(
@@ -166,7 +173,15 @@ private fun SimpleTrendBars(
     val maxValue = dailyStats.maxOf { maxOf(it.consumedCalories, it.budgetCalories) }.coerceAtLeast(1)
     val budgetColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
     val consumedColor = MaterialTheme.colorScheme.primary
-    val labelFormatter = DateTimeFormatter.ofPattern("d")
+    val labelFormatter = when (windowType) {
+        TrendWindowType.Last7Days -> DateTimeFormatter.ofPattern("EEE")
+        TrendWindowType.Last30Days -> DateTimeFormatter.ofPattern("d")
+    }
+    val labeledIndices = if (dailyStats.size <= 7) {
+        dailyStats.indices.toSet()
+    } else {
+        setOf(0, dailyStats.size / 4, dailyStats.size / 2, (dailyStats.size * 3) / 4, dailyStats.lastIndex)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Canvas(
@@ -200,17 +215,23 @@ private fun SimpleTrendBars(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            dailyStats
-                .let { if (it.size <= 7) it else listOf(it.first(), it[it.size / 4], it[it.size / 2], it[(it.size * 3) / 4], it.last()) }
-                .forEach { stat ->
-                    Text(
-                        text = stat.date.format(labelFormatter),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            dailyStats.forEachIndexed { index, stat ->
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (index in labeledIndices) {
+                        Text(
+                            text = stat.date.format(labelFormatter),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Spacer(modifier = Modifier)
+                    }
                 }
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

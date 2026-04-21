@@ -43,9 +43,7 @@ fun OnboardingFields(
             onValueChange = onFirstNameChanged,
             label = { Text("First name") },
             isError = fieldErrors.firstName != null,
-            supportingText = {
-                fieldErrors.firstName?.let { Text(it) }
-            },
+            supportingText = fieldErrors.firstName?.let { error -> { Text(error) } },
         )
         OutlinedTextField(
             modifier = Modifier.fillMaxWidth(),
@@ -54,9 +52,7 @@ fun OnboardingFields(
             label = { Text("Age") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = fieldErrors.ageYears != null,
-            supportingText = {
-                fieldErrors.ageYears?.let { Text(it) }
-            },
+            supportingText = fieldErrors.ageYears?.let { error -> { Text(error) } },
         )
         OutlinedTextField(
             modifier = Modifier.fillMaxWidth(),
@@ -65,9 +61,7 @@ fun OnboardingFields(
             label = { Text("Height (cm)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = fieldErrors.heightCm != null,
-            supportingText = {
-                fieldErrors.heightCm?.let { Text(it) }
-            },
+            supportingText = fieldErrors.heightCm?.let { error -> { Text(error) } },
         )
         OutlinedTextField(
             modifier = Modifier.fillMaxWidth(),
@@ -76,9 +70,7 @@ fun OnboardingFields(
             label = { Text("Weight (kg)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = fieldErrors.weightKg != null,
-            supportingText = {
-                fieldErrors.weightKg?.let { Text(it) }
-            },
+            supportingText = fieldErrors.weightKg?.let { error -> { Text(error) } },
         )
         ExposedDropdownMenuBox(
             expanded = sexExpanded,
