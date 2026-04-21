@@ -7,6 +7,11 @@
 # Preserve LiteRT-LM classes and method names used by JNI lookups.
 -keep class com.google.ai.edge.litertlm.** { *; }
 
+# Preserve runtime annotations and app-side LiteRT-LM tool bindings discovered via reflection.
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
+-keep class com.dreef3.weightlossapp.inference.FoodEstimationTools { *; }
+-keep class com.dreef3.weightlossapp.chat.DietEntryTools { *; }
+
 # Keep Room generated implementations and entity field names used by JSON backup/restore.
 -keep class androidx.room.** { *; }
 -keep class com.dreef3.weightlossapp.data.local.** { *; }
