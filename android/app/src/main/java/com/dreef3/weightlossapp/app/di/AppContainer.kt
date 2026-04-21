@@ -109,6 +109,7 @@ class AppContainer private constructor(context: Context) {
     )
     val gemmaFoodEstimationEngine: FoodEstimationEngine = LiteRtFoodEstimationEngine(
         modelFile = modelStorage.defaultModelFile,
+        backendPreferenceProvider = preferences::readGemmaBackend,
     )
     val foodEstimationEngine: FoodEstimationEngine = SelectableFoodEstimationEngine(
         preferences = preferences,
