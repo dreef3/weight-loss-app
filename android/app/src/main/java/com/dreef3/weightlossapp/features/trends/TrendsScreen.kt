@@ -3,13 +3,16 @@ package com.dreef3.weightlossapp.features.trends
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
@@ -23,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -213,23 +217,47 @@ private fun SimpleTrendBars(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            dailyStats.forEachIndexed { index, stat ->
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (index in labeledIndices) {
-                        Text(
-                            text = stat.date.format(labelFormatter),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        Spacer(modifier = Modifier)
+        if (dailyStats.size <= 7) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                dailyStats.forEachIndexed { index, stat ->
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (index in labeledIndices) {
+                            Text(
+                                text = stat.date.format(labelFormatter),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        } else {
+                            Spacer(modifier = Modifier)
+                        }
                     }
+                }
+            }
+        } else {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val slotWidth = maxWidth / dailyStats.size
+                val labelWidth = (slotWidth * 3).coerceAtMost(maxWidth)
+                labeledIndices.toList().sorted().forEach { index ->
+                    val center = slotWidth * index + slotWidth / 2
+                    val labelOffset = (center - labelWidth / 2).coerceIn(0.dp, maxWidth - labelWidth)
+                    Text(
+                        text = dailyStats[index].date.format(labelFormatter),
+                        modifier = Modifier
+                            .offset(x = labelOffset)
+                            .width(labelWidth),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                    )
                 }
             }
         }
