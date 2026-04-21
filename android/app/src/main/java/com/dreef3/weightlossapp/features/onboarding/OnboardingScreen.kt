@@ -214,15 +214,15 @@ fun OnboardingScreenRoute(
         }
     }
 
-    LaunchedEffect(state.step, state.form.healthConnectCaloriesEnabled) {
-        if (state.step != OnboardingStep.BudgetPreview) {
-            hasAutoResolvedHealthConnectOptIn = false
-            return@LaunchedEffect
+    fun continueFromBudgetPreview() {
+        if (state.form.healthConnectCaloriesEnabled && !hasAutoResolvedHealthConnectOptIn) {
+            handleHealthConnectOptInChange(true)
         }
-        if (!state.form.healthConnectCaloriesEnabled || hasAutoResolvedHealthConnectOptIn) {
-            return@LaunchedEffect
+        if (needsNotificationPermission(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            vm.requestModelDownload()
         }
-        handleHealthConnectOptInChange(true)
     }
 
     OnboardingScreen(
@@ -264,13 +264,7 @@ fun OnboardingScreenRoute(
         onHealthConnectCaloriesChanged = ::handleHealthConnectOptInChange,
         onBackFromProfile = vm::backFromProfile,
         onSubmitProfile = vm::submitProfile,
-        onStartModelDownload = {
-            if (needsNotificationPermission(context)) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                vm.requestModelDownload()
-            }
-        },
+        onStartModelDownload = ::continueFromBudgetPreview,
         onConfirmCellularDownload = vm::confirmCellularModelDownload,
         onDismissCellularDownload = vm::dismissCellularModelDownloadConfirmation,
         onFinish = vm::completeSetup,
