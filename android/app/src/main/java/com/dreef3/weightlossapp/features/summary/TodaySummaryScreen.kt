@@ -167,11 +167,32 @@ fun TodaySummaryScreen(
                 item {
                     state.errorMessage?.let { Text(it) }
                 }
-                if (state.processingCount > 0) {
+                if (state.showBackgroundProcessingBanner) {
                     item {
                         StatusCard(
                             title = "Processing in background",
-                            body = "${state.processingCount} photo(s) are still being estimated. You can close the app and come back later.",
+                            body = buildString {
+                                state.queueActiveLabel?.let { activeLabel ->
+                                    append("Model queue active: ")
+                                    append(
+                                        when (activeLabel) {
+                                            "coach_chat" -> "coach reply"
+                                            "coach_npu_smoke" -> "coach smoke test"
+                                            "photo_estimation" -> "photo estimation"
+                                            else -> activeLabel
+                                        },
+                                    )
+                                    append('.')
+                                    append(' ')
+                                }
+                                if (state.queueWaitingCount > 0) {
+                                    append("${state.queueWaitingCount} more model task(s) waiting. ")
+                                }
+                                if (state.processingCount > 0) {
+                                    append("${state.processingCount} today photo(s) are still marked as processing. ")
+                                }
+                                append("You can leave the app and come back later.")
+                            },
                         )
                     }
                 }

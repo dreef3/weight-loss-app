@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.model.ModelInvocationCoordinator
 import com.dreef3.weightlossapp.app.time.LocalDateProvider
 import com.dreef3.weightlossapp.chat.CoachChatSession
 import com.dreef3.weightlossapp.domain.calculation.SummaryAggregator
@@ -46,10 +47,15 @@ data class TodaySummaryUiState(
     val isEmpty: Boolean = true,
     val errorMessage: String? = null,
     val processingCount: Int = 0,
+    val queueActiveLabel: String? = null,
+    val queueWaitingCount: Int = 0,
     val manualEntries: List<FoodEntry> = emptyList(),
     val historyItems: List<TodayHistoryItem> = emptyList(),
     val lastActionMessage: String? = null,
-)
+) {
+    val showBackgroundProcessingBanner: Boolean
+        get() = queueActiveLabel != null || queueWaitingCount > 0 || processingCount > 0
+}
 
 class TodaySummaryViewModel(
     localDateProvider: LocalDateProvider,
@@ -57,6 +63,7 @@ class TodaySummaryViewModel(
     private val foodEntryRepository: FoodEntryRepository,
     coachChatRepository: CoachChatRepository,
     summaryAggregator: SummaryAggregator,
+    modelInvocationCoordinator: ModelInvocationCoordinator,
     private val backgroundPhotoCaptureUseCase: BackgroundPhotoCaptureUseCase,
     private val saveManualCaloriesUseCase: SaveManualCaloriesUseCase,
 ) : ViewModel() {
@@ -66,7 +73,8 @@ class TodaySummaryViewModel(
         profileRepository.observeBudgetPeriods(),
         foodEntryRepository.observeEntriesInRange(today.minusDays(29), today),
         coachChatRepository.observeSessionsInRange(today.minusDays(29), today),
-    ) { periods, entries, chatSessions ->
+        modelInvocationCoordinator.state,
+    ) { periods, entries, chatSessions, queueState ->
         val budget = periods
             .filter { it.effectiveFromDate <= today }
             .maxByOrNull { it.effectiveFromDate }
@@ -84,10 +92,15 @@ class TodaySummaryViewModel(
                 budgetCalories = budget,
                 entries = todayEntries,
             )
+            val visibleProcessingCount = entries.count {
+                it.entryStatus == FoodEntryStatus.Processing && it.deletedAt == null
+            }
             TodaySummaryUiState(
                 summary = summary,
                 isEmpty = summary.entryCount == 0,
-                processingCount = todayEntries.count { it.entryStatus == FoodEntryStatus.Processing && it.deletedAt == null },
+                processingCount = visibleProcessingCount,
+                queueActiveLabel = queueState.activeLabel,
+                queueWaitingCount = queueState.waitingCount,
                 manualEntries = todayEntries.filter { it.entryStatus == FoodEntryStatus.NeedsManual && it.deletedAt == null },
                 historyItems = buildList {
                     addAll(
@@ -156,6 +169,7 @@ class TodaySummaryViewModelFactory(
             foodEntryRepository = container.foodEntryRepository,
             coachChatRepository = container.coachChatRepository,
             summaryAggregator = container.summaryAggregator,
+            modelInvocationCoordinator = container.modelInvocationCoordinator,
             backgroundPhotoCaptureUseCase = container.backgroundPhotoCaptureUseCase,
             saveManualCaloriesUseCase = container.saveManualCaloriesUseCase,
         ) as T
