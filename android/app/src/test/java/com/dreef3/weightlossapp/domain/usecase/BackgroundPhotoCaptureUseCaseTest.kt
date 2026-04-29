@@ -87,5 +87,7 @@ private class FakeScheduler : PhotoProcessingScheduler {
 }
 
 private class FakePhotoStorage : PhotoStorage(ContextWrapper(null)) {
+    override fun isReadablePhoto(path: String): Boolean = true
+
     override fun normalizePhoto(path: String): Boolean = true
 }
