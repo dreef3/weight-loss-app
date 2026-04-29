@@ -241,7 +241,8 @@ class OnboardingViewModel(
             if (enabled && !wasEnabled) {
                 healthConnectBackfillService?.backfillRecentEntries()
             }
-            val trainingEnabled = _uiState.value.form.trainingDataSharingEnabled
+            val trainingEnabled = _uiState.value.form.trainingDataSharingEnabled &&
+                (modelImprovementUploader?.isUploadAvailable() ?: false)
             preferences.setTrainingDataSharingEnabled(trainingEnabled)
             if (trainingEnabled) {
                 modelImprovementUploadScheduler?.enablePeriodicSync()

@@ -39,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.work.WorkManager
-import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.app.media.ModelDownloadState
 import com.dreef3.weightlossapp.app.media.ModelDescriptors
@@ -375,12 +374,8 @@ fun ProfileEditScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                val trainingUploadConfigured =
-                    BuildConfig.MODEL_IMPROVEMENT_API_BASE_URL.isNotBlank() &&
-                        (
-                            BuildConfig.MODEL_IMPROVEMENT_CLOUD_PROJECT_NUMBER > 0L ||
-                                (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank())
-                            )
+                val trainingUploadConfigured = container.modelImprovementUploader.isUploadAvailable()
+                val trainingUploadDescription = container.modelImprovementUploader.availabilityDescription()
                 Text(
                     text = "Data and sync",
                     style = MaterialTheme.typography.labelLarge,
@@ -466,19 +461,13 @@ fun ProfileEditScreen(
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = if (!trainingUploadConfigured) {
-                                "Model improvement upload is not configured for this build."
-                            } else if (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank()) {
-                                "Debug build uploads use a local debug token instead of Play Integrity."
-                            } else {
-                                "When enabled, Žvaka uploads a downscaled meal photo, detected description, and calorie estimate after Play Integrity verification for recognized installs."
-                            },
+                            text = trainingUploadDescription,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Switch(
-                        checked = trainingDataSharingEnabled,
+                        checked = trainingUploadConfigured && trainingDataSharingEnabled,
                         enabled = trainingUploadConfigured,
                         onCheckedChange = { enabled ->
                             scope.launch {

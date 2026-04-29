@@ -38,7 +38,7 @@ object AppInitializer {
                 } else {
                     container.driveSyncScheduler.disablePeriodicSync()
                 }
-                if (trainingDataSharingEnabled) {
+                if (trainingDataSharingEnabled && container.modelImprovementUploader.isUploadAvailable()) {
                     container.modelImprovementUploadScheduler.enablePeriodicSync()
                     container.modelImprovementUploadScheduler.enqueueImmediateSync()
                     runCatching {
