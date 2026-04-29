@@ -43,14 +43,16 @@ import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.app.media.ModelDownloadState
 import com.dreef3.weightlossapp.app.media.ModelDescriptors
+import com.dreef3.weightlossapp.app.network.NetworkConnectionType
 import com.dreef3.weightlossapp.app.sync.DriveAuthorizationOutcome
 import com.dreef3.weightlossapp.app.sync.DriveSyncState
 import com.dreef3.weightlossapp.chat.CoachModel
+import com.dreef3.weightlossapp.chat.DietChatSnapshot
+import com.dreef3.weightlossapp.chat.primaryPhotoModelDescriptor
+import com.dreef3.weightlossapp.chat.requiredPhotoModelDescriptors
 import com.dreef3.weightlossapp.chat.requiredModelDescriptor
+import com.dreef3.weightlossapp.chat.usesLlamaBackend
 import com.dreef3.weightlossapp.data.preferences.GemmaBackend
-import com.dreef3.weightlossapp.inference.CalorieEstimationModel
-import com.dreef3.weightlossapp.inference.primaryModelDescriptor
-import com.dreef3.weightlossapp.inference.requiredModelDescriptors
 import com.dreef3.weightlossapp.domain.usecase.SaveUserProfileRequest
 import com.dreef3.weightlossapp.domain.calculation.CalorieBudgetCalculator
 import java.time.Instant
@@ -84,25 +86,32 @@ fun ProfileEditScreen(
     val healthConnectCaloriesEnabled by container.preferences.healthConnectCaloriesEnabled.collectAsStateWithLifecycle(initialValue = false)
     val coachModel by container.preferences.coachModel.collectAsStateWithLifecycle(initialValue = CoachModel.Gemma)
     val gemmaBackend by container.preferences.gemmaBackend.collectAsStateWithLifecycle(initialValue = GemmaBackend.CPU)
-    val calorieModel by container.preferences.calorieEstimationModel.collectAsStateWithLifecycle(initialValue = CalorieEstimationModel.Gemma)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? Activity
-    val selectedCalorieDescriptor = calorieModel.primaryModelDescriptor()
-    val selectedCalorieStateFlow = remember(calorieModel, container) {
+    val selectedCoachDescriptor = coachModel.requiredModelDescriptor()
+    val selectedAssetDescriptors = remember(coachModel) {
+        buildList {
+            add(selectedCoachDescriptor)
+            coachModel.requiredPhotoModelDescriptors().forEach { descriptor ->
+                if (none { it.fileName == descriptor.fileName }) add(descriptor)
+            }
+        }
+    }
+    val selectedPhotoDescriptor = coachModel.primaryPhotoModelDescriptor()
+    val selectedAssetsStateFlow = remember(coachModel, container) {
         combinedDownloadState(
             modelDownloadController = container.modelDownloadRepository,
-            models = calorieModel.requiredModelDescriptors(),
+            models = selectedAssetDescriptors,
         )
     }
-    val selectedCalorieDownloadState by selectedCalorieStateFlow
-        .collectAsStateWithLifecycle(initialValue = ModelDownloadState())
-    val selectedCalorieReady = calorieModel.requiredModelDescriptors().all(container.modelStorage::hasUsableModel)
-    val selectedCoachDescriptor = coachModel.requiredModelDescriptor()
-    val selectedCoachDownloadState by container.modelDownloadRepository
-        .observeState(selectedCoachDescriptor)
+    val selectedAssetsDownloadState by selectedAssetsStateFlow
         .collectAsStateWithLifecycle(initialValue = ModelDownloadState())
     val selectedCoachReady = container.modelStorage.hasUsableModel(selectedCoachDescriptor)
+    val selectedPhotoReady = coachModel.requiredPhotoModelDescriptors().all(container.modelStorage::hasUsableModel)
+    val selectedAssetsReady = selectedAssetDescriptors.all(container.modelStorage::hasUsableModel)
+    val currentConnectionType = container.networkConnectionMonitor.currentConnectionType()
+    val canDownloadModelsNow = currentConnectionType == NetworkConnectionType.Wifi
     val healthConnectAvailable = container.healthConnectCaloriesExporter.isAvailable()
     val healthConnectNeedsProviderSetup = container.healthConnectCaloriesExporter.needsProviderSetup()
 
@@ -120,6 +129,8 @@ fun ProfileEditScreen(
     var pendingDriveAction by remember { mutableStateOf<PendingDriveAction?>(null) }
     var showAdvancedSettings by remember { mutableStateOf(false) }
     var healthConnectStatusMessage by remember { mutableStateOf<String?>(null) }
+    var qwenSmokeTestStatus by remember { mutableStateOf<String?>(null) }
+    var qwenSmokeTestRunning by remember { mutableStateOf(false) }
     val currentBudget = budgetPeriods.maxByOrNull { it.effectiveFromDate }?.caloriesPerDay
     val estimatedBudget = form.estimatedBudgetOrNull(container.budgetCalculator)
     val requiredResetName = profile?.firstName?.trim().orEmpty()
@@ -150,11 +161,15 @@ fun ProfileEditScreen(
             PendingDriveAction.Connect -> {
                 container.preferences.setDriveSyncEnabled(true)
                 container.driveSyncScheduler.enablePeriodicSync()
-                container.googleDriveSyncManager.uploadBackup(
-                    accessToken = authorization.accessToken,
-                    accountEmail = authorization.accountEmail,
-                )
-                driveStatusMessage = "Google Drive connected. Automatic sync is on."
+                if (container.networkConnectionMonitor.currentConnectionType() == NetworkConnectionType.Wifi) {
+                    container.googleDriveSyncManager.uploadBackup(
+                        accessToken = authorization.accessToken,
+                        accountEmail = authorization.accountEmail,
+                    )
+                    driveStatusMessage = "Google Drive connected. Automatic sync is on."
+                } else {
+                    driveStatusMessage = "Google Drive connected. Automatic backup is on and will wait for Wi-Fi before uploading."
+                }
             }
 
             PendingDriveAction.SyncNow -> {
@@ -581,51 +596,13 @@ fun ProfileEditScreen(
                     Text(if (showAdvancedSettings) "Hide advanced settings" else "Show advanced settings")
                 }
                 if (showAdvancedSettings) {
-                    val gemmaReady = selectedCoachReady && selectedCalorieReady
-                    val gemmaDownloading = selectedCoachDownloadState.isDownloading || selectedCalorieDownloadState.isDownloading
-                    val gemmaProgress = listOfNotNull(
-                        selectedCoachDownloadState.progressPercent,
-                        selectedCalorieDownloadState.progressPercent,
-                    ).maxOrNull()
-                    val gemmaError = selectedCoachDownloadState.errorMessage ?: selectedCalorieDownloadState.errorMessage
+                    val selectedCoachUsesLlama = coachModel.usesLlamaBackend()
+                    val coachAndPhotoReady = selectedAssetsReady
+                    val coachAndPhotoDownloading = selectedAssetsDownloadState.isDownloading
+                    val coachAndPhotoProgress = selectedAssetsDownloadState.progressPercent
+                    val coachAndPhotoError = selectedAssetsDownloadState.errorMessage
                     Text(
-                        text = "Local Gemma model",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = if (gemmaReady) {
-                            "${selectedCoachDescriptor.displayName} is ready on this device for both coaching and photo estimation."
-                        } else if (gemmaDownloading) {
-                            "Downloading ${selectedCoachDescriptor.displayName}... ${gemmaProgress ?: 0}%"
-                        } else {
-                            "${selectedCoachDescriptor.displayName} is not downloaded yet."
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    gemmaError?.let { error ->
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { container.modelDownloadRepository.enqueueIfNeeded(ModelDescriptors.gemma) },
-                        enabled = !gemmaReady && !gemmaDownloading,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (gemmaDownloading) {
-                                "Downloading Gemma model..."
-                            } else {
-                                "Download Gemma model"
-                            },
-                        )
-                    }
-                    Text(
-                        text = "Gemma backend",
+                        text = "Model engine",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -633,26 +610,163 @@ fun ProfileEditScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        GemmaBackend.entries.forEach { backend ->
+                        CoachModel.entries.forEach { model ->
                             FilterChip(
-                                selected = gemmaBackend == backend,
+                                selected = coachModel == model,
                                 onClick = {
                                     scope.launch {
-                                        container.preferences.setGemmaBackend(backend)
+                                        container.preferences.setCoachModel(model)
                                     }
                                 },
-                                label = { Text(backend.displayName) },
+                                label = { Text(model.displayName) },
                             )
                         }
                     }
                     Text(
-                        text = when (gemmaBackend) {
-                            GemmaBackend.CPU -> "CPU is slower, but it is the safer path on this device."
-                            GemmaBackend.GPU -> "GPU is faster when it works, but it can freeze or crash on unstable devices."
+                        text = "Downloaded assets",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = if (coachAndPhotoReady) {
+                            if (selectedCoachUsesLlama) {
+                                "${selectedCoachDescriptor.displayName} is ready on this device for coaching, and ${selectedPhotoDescriptor.displayName} is ready for photo estimation through the same llama.cpp backend."
+                            } else {
+                                "${selectedCoachDescriptor.displayName} is ready on this device for both coaching and photo estimation through LiteRT."
+                            }
+                        } else if (coachAndPhotoDownloading) {
+                            "Downloading ${selectedCoachDescriptor.displayName}... ${coachAndPhotoProgress ?: 0}%"
+                        } else {
+                            "${selectedCoachDescriptor.displayName} is not downloaded yet."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    coachAndPhotoError?.let { error ->
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    if (!selectedAssetsReady && !canDownloadModelsNow) {
+                        Text(
+                            text = when (currentConnectionType) {
+                                NetworkConnectionType.Cellular -> "Model downloads are Wi-Fi only. Connect to Wi-Fi to download the required assets."
+                                NetworkConnectionType.Offline -> "Connect to Wi‑Fi to download the required assets."
+                                NetworkConnectionType.Other -> "Model downloads are restricted to Wi‑Fi for now."
+                                NetworkConnectionType.Wifi -> ""
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            selectedAssetDescriptors.forEach(container.modelDownloadRepository::enqueueIfNeeded)
+                        },
+                        enabled = !selectedAssetsReady && !selectedAssetsDownloadState.isDownloading && canDownloadModelsNow,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (selectedAssetsDownloadState.isDownloading) {
+                                "Downloading required assets..."
+                            } else if (!canDownloadModelsNow && !selectedAssetsReady) {
+                                "Wi‑Fi required for download"
+                            } else {
+                                "Download required assets"
+                            },
+                        )
+                    }
+                    Text(
+                        text = if (coachModel.usesLlamaBackend()) {
+                            "This selection uses llama.cpp for both coaching and photo estimation."
+                        } else {
+                            "This selection uses LiteRT for both coaching and photo estimation."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (BuildConfig.DEBUG) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    qwenSmokeTestRunning = true
+                                    qwenSmokeTestStatus = "Starting coach NPU smoke test..."
+                                    qwenSmokeTestStatus = withContext(Dispatchers.Default) {
+                                        container.selectedCoachNpuSmokeTestEngine
+                                            .sendMessage(
+                                                message = "Reply with exactly OK.",
+                                                history = emptyList(),
+                                                snapshot = DietChatSnapshot(
+                                                    todayBudgetCalories = null,
+                                                    todayConsumedCalories = 0,
+                                                    todayRemainingCalories = null,
+                                                    entries = emptyList(),
+                                                ),
+                                            )
+                                            .fold(
+                                                onSuccess = { reply -> "Coach NPU smoke test succeeded: ${reply.take(120)}" },
+                                                onFailure = { throwable -> "Coach NPU smoke test failed: ${throwable.message ?: throwable::class.simpleName.orEmpty()}" },
+                                            )
+                                    }
+                                    qwenSmokeTestRunning = false
+                                }
+                            },
+                            enabled = selectedCoachReady && !qwenSmokeTestRunning,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (qwenSmokeTestRunning) "Running coach NPU smoke test..." else "Run coach NPU smoke test")
+                        }
+                        qwenSmokeTestStatus?.let { status ->
+                            Text(
+                                text = status,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (selectedPhotoReady) {
+                            "Photo estimation asset ready: ${selectedPhotoDescriptor.displayName}."
+                        } else {
+                            "Photo estimation also requires ${selectedPhotoDescriptor.displayName}."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (!coachModel.usesLlamaBackend()) {
+                        Text(
+                            text = "Gemma backend",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            GemmaBackend.entries.forEach { backend ->
+                                FilterChip(
+                                    selected = gemmaBackend == backend,
+                                    onClick = {
+                                        scope.launch {
+                                            container.preferences.setGemmaBackend(backend)
+                                        }
+                                    },
+                                    label = { Text(backend.displayName) },
+                                )
+                            }
+                        }
+                        Text(
+                            text = when (gemmaBackend) {
+                                GemmaBackend.CPU -> "CPU is slower, but it is the safer path on this device."
+                                GemmaBackend.GPU -> "GPU is faster when it works, but it can freeze or crash on unstable devices."
+                                GemmaBackend.NPU -> "NPU is the fastest path on supported devices. If startup fails for photo estimation, it falls back to GPU and then CPU."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         text = "Reset app",
                         style = MaterialTheme.typography.labelLarge,
@@ -716,9 +830,11 @@ fun ProfileEditScreen(
                         scope.launch {
                             isResetting = true
                             withContext(Dispatchers.IO) {
-                                WorkManager.getInstance(container.appContext)
-                                    .cancelUniqueWork(ModelDescriptors.gemma.uniqueWorkName)
-                                WorkManager.getInstance(container.appContext).cancelAllWork()
+                                val workManager = WorkManager.getInstance(container.appContext)
+                                ModelDescriptors.all.forEach { descriptor ->
+                                    workManager.cancelUniqueWork(descriptor.uniqueWorkName)
+                                }
+                                workManager.cancelAllWork()
                                 container.driveSyncScheduler.disablePeriodicSync()
                                 container.database.clearAllTables()
                                 container.preferences.reset()
