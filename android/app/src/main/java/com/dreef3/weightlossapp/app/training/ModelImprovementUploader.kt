@@ -1,31 +1,27 @@
 package com.dreef3.weightlossapp.app.training
 
 import android.content.Context
-import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.Log
-import android.util.Base64
 import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.data.preferences.AppPreferences
 import com.dreef3.weightlossapp.domain.model.FoodEntry
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
-import com.google.android.play.core.integrity.IntegrityManagerFactory
-import com.google.android.play.core.integrity.StandardIntegrityException
-import com.google.android.play.core.integrity.StandardIntegrityManager
-import com.google.android.play.core.integrity.model.StandardIntegrityErrorCode
+import com.google.firebase.FirebaseException
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
@@ -34,17 +30,14 @@ class ModelImprovementUploader(
     private val preferences: AppPreferences,
     private val foodEntryRepository: FoodEntryRepository,
 ) {
-    private val integrityTokenProviderMutex = Mutex()
-    private var integrityTokenProvider: StandardIntegrityManager.StandardIntegrityTokenProvider? = null
-
     fun isUploadAvailable(): Boolean = availabilityIssue() == null
 
     fun availabilityDescription(): String =
         availabilityIssue()
             ?: if (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank()) {
-                "Debug build uploads use a local debug token instead of Play Integrity."
+                "Debug build uploads use a local debug token instead of Firebase App Check."
             } else {
-                "When enabled, Zvaka uploads a downscaled meal photo, detected description, and calorie estimate after Play Integrity verification for recognized installs."
+                "When enabled, Zvaka uploads a downscaled meal photo, detected description, and calorie estimate using Firebase App Check for request validation on recognized installs."
             }
 
     suspend fun uploadIfEnabled(entry: FoodEntry) {
@@ -115,20 +108,12 @@ class ModelImprovementUploader(
         val capturedAt = entry.capturedAt.toString()
         val entryId = entry.id.toString()
         val confidenceState = entry.confidenceState.name
-        val requestHash = computeRequestHash(
-            photoBytes = imageBytes,
-            description = description,
-            calorieEstimate = entry.finalCalories,
-            capturedAt = capturedAt,
-            entryId = entryId,
-            confidenceState = confidenceState,
-        )
         val integrityToken = if (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank()) {
             debugLog("uploadEntry using debug auth entryId=${entry.id}")
             null
         } else {
-            debugLog("uploadEntry requesting integrity token entryId=${entry.id}")
-            requestIntegrityToken(requestHash)
+            debugLog("uploadEntry requesting App Check token entryId=${entry.id}")
+            requestAppCheckToken()
         }
 
         withContext(Dispatchers.IO) {
@@ -194,11 +179,8 @@ class ModelImprovementUploader(
         if (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank()) {
             return null
         }
-        if (BuildConfig.MODEL_IMPROVEMENT_CLOUD_PROJECT_NUMBER <= 0L) {
-            return "Model improvement upload is not configured for this build."
-        }
         if (!isInstalledFromGooglePlay()) {
-            return "This release install was not installed by Google Play, so Play Integrity-backed uploads are unavailable here."
+            return "This release install was not installed by Google Play, so Firebase App Check uploads are unavailable here."
         }
         return null
     }
@@ -215,53 +197,24 @@ class ModelImprovementUploader(
         return installerPackageName == PLAY_STORE_PACKAGE_NAME
     }
 
-    private suspend fun requestIntegrityToken(requestHash: String): String {
-        val token = runCatching {
-            getOrCreateIntegrityTokenProvider().request(createStandardIntegrityTokenRequest(requestHash)).await()
-        }.recoverCatching { throwable ->
-            val integrityException = throwable as? StandardIntegrityException
-            if (integrityException?.errorCode != StandardIntegrityErrorCode.INTEGRITY_TOKEN_PROVIDER_INVALID) {
-                throw throwable
-            }
-            invalidateIntegrityTokenProvider()
-            getOrCreateIntegrityTokenProvider().request(createStandardIntegrityTokenRequest(requestHash)).await()
-        }.getOrThrow()
-        return token.token()
+    private suspend fun requestAppCheckToken(): String {
+        ensureAppCheckConfigured()
+        return FirebaseAppCheck.getInstance().getAppCheckToken(false).await().token
     }
 
-    private suspend fun getOrCreateIntegrityTokenProvider(): StandardIntegrityManager.StandardIntegrityTokenProvider {
-        integrityTokenProvider?.let { return it }
-        return integrityTokenProviderMutex.withLock {
-            integrityTokenProvider?.let { return@withLock it }
-            IntegrityManagerFactory.createStandard(context).prepareIntegrityToken(
-                StandardIntegrityManager.PrepareIntegrityTokenRequest.builder()
-                    .setCloudProjectNumber(BuildConfig.MODEL_IMPROVEMENT_CLOUD_PROJECT_NUMBER)
-                    .build(),
-            ).await().also { provider ->
-                integrityTokenProvider = provider
-            }
+    private fun ensureAppCheckConfigured() {
+        if (appCheckConfigured) return
+        synchronized(appCheckLock) {
+            if (appCheckConfigured) return
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                PlayIntegrityAppCheckProviderFactory.getInstance(),
+            )
+            appCheckConfigured = true
         }
     }
 
-    private suspend fun invalidateIntegrityTokenProvider() {
-        integrityTokenProviderMutex.withLock {
-            integrityTokenProvider = null
-        }
-    }
-
-    private fun createStandardIntegrityTokenRequest(requestHash: String): StandardIntegrityManager.StandardIntegrityTokenRequest =
-        StandardIntegrityManager.StandardIntegrityTokenRequest.builder()
-            .setRequestHash(requestHash)
-            .build()
-
-    private fun shouldRetryPendingUploadFailure(throwable: Throwable): Boolean {
-        val integrityException = throwable as? StandardIntegrityException ?: return false
-        return integrityException.errorCode == StandardIntegrityErrorCode.TOO_MANY_REQUESTS ||
-            integrityException.errorCode == StandardIntegrityErrorCode.NETWORK_ERROR ||
-            integrityException.errorCode == StandardIntegrityErrorCode.GOOGLE_SERVER_UNAVAILABLE ||
-            integrityException.errorCode == StandardIntegrityErrorCode.CLIENT_TRANSIENT_ERROR ||
-            integrityException.errorCode == StandardIntegrityErrorCode.CANNOT_BIND_TO_SERVICE
-    }
+    private fun shouldRetryPendingUploadFailure(throwable: Throwable): Boolean =
+        throwable is IOException || throwable is FirebaseException
 
     private fun loadDownscaledPhoto(imagePath: String): ByteArray? {
         val file = File(imagePath)
@@ -340,33 +293,12 @@ class ModelImprovementUploader(
         output.writeBytes("\r\n")
     }
 
-    private fun computeRequestHash(
-        photoBytes: ByteArray,
-        description: String,
-        calorieEstimate: Int,
-        capturedAt: String,
-        entryId: String,
-        confidenceState: String,
-    ): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update(photoBytes)
-        digest.update(0)
-        listOf(
-            description,
-            calorieEstimate.toString(),
-            capturedAt,
-            entryId,
-            confidenceState,
-        ).forEach { value ->
-            digest.update(value.toByteArray(Charsets.UTF_8))
-            digest.update(0)
-        }
-        return Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
-    }
-
     private companion object {
         private const val TAG = "ModelImprovement"
         private const val PLAY_STORE_PACKAGE_NAME = "com.android.vending"
+        private val appCheckLock = Any()
+        @Volatile
+        private var appCheckConfigured = false
         const val MAX_DIMENSION_PX = 1024
         const val JPEG_QUALITY = 85
     }

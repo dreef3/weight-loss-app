@@ -215,9 +215,6 @@ tasks.matching { it.name == "preReleaseBuild" }.configureEach {
         check(modelImprovementApiBaseUrl.isNotBlank()) {
             "Release build requires MODEL_IMPROVEMENT_API_BASE_URL to be set."
         }
-        check(modelImprovementCloudProjectNumberValue > 0L) {
-            "Release build requires MODEL_IMPROVEMENT_CLOUD_PROJECT_NUMBER to be a positive integer."
-        }
     }
 }
 
@@ -248,6 +245,7 @@ dependencies {
     implementation("com.google.android.play:app-update-ktx:2.1.0")
     implementation("com.google.android.play:integrity:1.6.0")
     implementation(firebaseBom)
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
 

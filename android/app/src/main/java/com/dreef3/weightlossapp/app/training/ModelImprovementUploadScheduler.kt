@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.dreef3.weightlossapp.work.ModelImprovementUploadWorker
@@ -18,7 +19,7 @@ class ModelImprovementUploadScheduler(
 
     fun enqueueImmediateSync() {
         val request = OneTimeWorkRequestBuilder<ModelImprovementUploadWorker>()
-            .setConstraints(networkConstraints())
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         workManager.enqueueUniqueWork(IMMEDIATE_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
     }
