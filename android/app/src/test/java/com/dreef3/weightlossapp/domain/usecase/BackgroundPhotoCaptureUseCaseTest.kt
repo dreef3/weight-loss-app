@@ -64,6 +64,8 @@ private class FakeRepository : FoodEntryRepository {
 
     override suspend fun markModelImprovementUploaded(entryId: Long, uploadedAt: Instant) = Unit
 
+    override suspend fun resetModelImprovementUploadsSince(cutoff: Instant): Int = 0
+
     override suspend fun upsert(entry: FoodEntry): Long {
         val id = if (entry.id == 0L) 1L else entry.id
         savedEntries.removeAll { it.id == id }
