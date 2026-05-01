@@ -130,9 +130,8 @@ class MainActivity : ComponentActivity() {
             )
             runCatching {
                 container.modelImprovementUploadScheduler.enqueueImmediateSync()
-                container.modelImprovementUploader.uploadPendingIfEnabled()
             }.onSuccess {
-                Log.i(TAG, "Model improvement upload retrigger completed for resetCount=$resetCount")
+                Log.i(TAG, "Model improvement upload retrigger enqueued for resetCount=$resetCount")
             }.onFailure { throwable ->
                 Log.e(TAG, "Model improvement upload retrigger failed for resetCount=$resetCount", throwable)
             }
