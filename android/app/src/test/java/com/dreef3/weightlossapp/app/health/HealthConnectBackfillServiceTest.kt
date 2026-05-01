@@ -77,6 +77,8 @@ private class FakeFoodEntryRepository : FoodEntryRepository {
 
     override suspend fun markModelImprovementUploaded(entryId: Long, uploadedAt: Instant) = Unit
 
+    override suspend fun resetModelImprovementUploadsSince(cutoff: Instant): Int = 0
+
     override suspend fun upsert(entry: FoodEntry): Long = entry.id
 
     override suspend fun delete(entry: FoodEntry) = Unit

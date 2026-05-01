@@ -59,7 +59,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.app.media.ModelDescriptors
 import com.dreef3.weightlossapp.app.notifications.needsNotificationPermission
@@ -86,12 +85,8 @@ fun OnboardingScreenRoute(
     var completeAfterModelPreparation by remember { mutableStateOf(false) }
     val healthConnectAvailable = container.healthConnectCaloriesExporter.isAvailable()
     val healthConnectNeedsProviderSetup = container.healthConnectCaloriesExporter.needsProviderSetup()
-    val trainingUploadConfigured =
-        BuildConfig.MODEL_IMPROVEMENT_API_BASE_URL.isNotBlank() &&
-            (
-                BuildConfig.MODEL_IMPROVEMENT_CLOUD_PROJECT_NUMBER > 0L ||
-                    (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank())
-            )
+    val trainingUploadConfigured = container.modelImprovementUploader.isUploadAvailable()
+    val trainingUploadDescription = container.modelImprovementUploader.availabilityDescription()
     val hasCompletedOnboarding by container.preferences.hasCompletedOnboarding.collectAsStateWithLifecycle(initialValue = false)
 
     LaunchedEffect(state.isCompleted) {
@@ -289,6 +284,7 @@ fun OnboardingScreenRoute(
         healthConnectAvailable = healthConnectAvailable,
         healthConnectNeedsProviderSetup = healthConnectNeedsProviderSetup,
         trainingUploadConfigured = trainingUploadConfigured,
+        trainingUploadDescription = trainingUploadDescription,
     )
 }
 
@@ -318,6 +314,7 @@ fun OnboardingScreen(
     healthConnectAvailable: Boolean,
     healthConnectNeedsProviderSetup: Boolean,
     trainingUploadConfigured: Boolean,
+    trainingUploadDescription: String,
 ) {
     val compactLayout = LocalConfiguration.current.screenHeightDp < 780
     val outerPadding = if (compactLayout) 16.dp else 24.dp
@@ -394,6 +391,7 @@ fun OnboardingScreen(
                             healthConnectAvailable = healthConnectAvailable,
                             healthConnectNeedsProviderSetup = healthConnectNeedsProviderSetup,
                             trainingUploadConfigured = trainingUploadConfigured,
+                            trainingUploadDescription = trainingUploadDescription,
                             compactLayout = compactLayout,
                         )
                         OnboardingStep.Downloading -> DownloadingStep(
@@ -609,6 +607,7 @@ private fun BudgetPreviewStep(
     healthConnectAvailable: Boolean,
     healthConnectNeedsProviderSetup: Boolean,
     trainingUploadConfigured: Boolean,
+    trainingUploadDescription: String,
     compactLayout: Boolean,
 ) {
     StepCard(compactLayout = compactLayout) {
@@ -655,14 +654,8 @@ private fun BudgetPreviewStep(
         }
         PreferenceToggleRow(
             title = "Share meal data for model improvement",
-            description = if (!trainingUploadConfigured) {
-                "Model improvement upload is not configured for this build."
-            } else if (BuildConfig.DEBUG && BuildConfig.MODEL_IMPROVEMENT_DEBUG_TOKEN.isNotBlank()) {
-                "Debug build uploads use a local debug token instead of Play Integrity."
-            } else {
-                "When enabled, Žvaka uploads a downscaled meal photo, detected description, and calorie estimate after Play Integrity verification for recognized installs."
-            },
-            checked = state.form.trainingDataSharingEnabled,
+            description = trainingUploadDescription,
+            checked = trainingUploadConfigured && state.form.trainingDataSharingEnabled,
             enabled = trainingUploadConfigured,
             onCheckedChange = onTrainingDataSharingChanged,
         )

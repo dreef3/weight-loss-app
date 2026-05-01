@@ -46,6 +46,14 @@ class FoodEntryRepositoryImpl(
         requestDriveSync("food_entry:model_improvement_uploaded")
     }
 
+    override suspend fun resetModelImprovementUploadsSince(cutoff: Instant): Int {
+        val updatedCount = foodEntryDao.resetModelImprovementUploadsSince(cutoff.toEpochMilli())
+        if (updatedCount > 0) {
+            requestDriveSync("food_entry:model_improvement_reset")
+        }
+        return updatedCount
+    }
+
     override suspend fun upsert(entry: FoodEntry): Long {
         val entryId = if (entry.id == 0L) {
             foodEntryDao.insert(entry.toEntity())

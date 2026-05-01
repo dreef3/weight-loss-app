@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import com.dreef3.weightlossapp.BuildConfig
 import com.dreef3.weightlossapp.app.di.AppContainer
 import com.dreef3.weightlossapp.app.ui.theme.WeightLossAppTheme
@@ -15,6 +16,8 @@ import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
+import java.time.Instant
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var appUpdateManager: AppUpdateManager
@@ -34,6 +37,7 @@ class MainActivity : ComponentActivity() {
         shouldCheckForImmediateUpdate = savedInstanceState == null && isLauncherStart(intent)
         AppContainer.initialize(applicationContext)
         AppInitializer.initialize(AppContainer.instance)
+        handleIntentActions(intent, fromNewIntent = false)
         appUpdateManager = AppUpdateManagerFactory.create(applicationContext)
         setContent {
             WeightLossAppTheme {
@@ -55,6 +59,12 @@ class MainActivity : ComponentActivity() {
         if (!BuildConfig.DEBUG) {
             resumeImmediateUpdateIfNeeded()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntentActions(intent, fromNewIntent = true)
     }
 
     private fun checkForImmediateUpdate() {
@@ -104,7 +114,36 @@ class MainActivity : ComponentActivity() {
         return intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER)
     }
 
+    private fun handleIntentActions(intent: Intent?, fromNewIntent: Boolean) {
+        if (intent?.getBooleanExtra(EXTRA_RETRIGGER_RECENT_MODEL_UPLOADS, false) != true) {
+            return
+        }
+        val recentDays = intent.getIntExtra(EXTRA_RECENT_MODEL_UPLOAD_DAYS, DEFAULT_RECENT_MODEL_UPLOAD_DAYS)
+            .coerceIn(1, MAX_RECENT_MODEL_UPLOAD_DAYS)
+        lifecycleScope.launch {
+            val cutoff = Instant.now().minusSeconds(recentDays.toLong() * SECONDS_PER_DAY)
+            val container = AppContainer.instance
+            val resetCount = container.foodEntryRepository.resetModelImprovementUploadsSince(cutoff)
+            Log.i(
+                TAG,
+                "Retriggering model improvement uploads for recentDays=$recentDays resetCount=$resetCount fromNewIntent=$fromNewIntent",
+            )
+            runCatching {
+                container.modelImprovementUploadScheduler.enqueueImmediateSync()
+            }.onSuccess {
+                Log.i(TAG, "Model improvement upload retrigger enqueued for resetCount=$resetCount")
+            }.onFailure { throwable ->
+                Log.e(TAG, "Model improvement upload retrigger failed for resetCount=$resetCount", throwable)
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "MainActivity"
+        const val EXTRA_RETRIGGER_RECENT_MODEL_UPLOADS = "retrigger_recent_model_uploads"
+        const val EXTRA_RECENT_MODEL_UPLOAD_DAYS = "recent_model_upload_days"
+        private const val DEFAULT_RECENT_MODEL_UPLOAD_DAYS = 7
+        private const val MAX_RECENT_MODEL_UPLOAD_DAYS = 30
+        private const val SECONDS_PER_DAY = 86_400L
     }
 }

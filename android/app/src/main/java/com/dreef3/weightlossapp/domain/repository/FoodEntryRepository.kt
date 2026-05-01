@@ -14,6 +14,7 @@ interface FoodEntryRepository {
     suspend fun getEntry(entryId: Long): FoodEntry?
     suspend fun getPendingModelImprovementUploads(): List<FoodEntry>
     suspend fun markModelImprovementUploaded(entryId: Long, uploadedAt: Instant)
+    suspend fun resetModelImprovementUploadsSince(cutoff: Instant): Int
     suspend fun upsert(entry: FoodEntry): Long
     suspend fun delete(entry: FoodEntry)
 }
