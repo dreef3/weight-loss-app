@@ -53,6 +53,16 @@ interface FoodEntryDao {
     )
     suspend fun markModelImprovementUploaded(entryId: Long, uploadedAtEpochMs: Long)
 
+    @Query(
+        """
+        UPDATE food_entry
+        SET modelImprovementUploadedAtEpochMs = NULL
+        WHERE deletedAtEpochMs IS NULL
+          AND capturedAtEpochMs >= :cutoffEpochMs
+        """,
+    )
+    suspend fun resetModelImprovementUploadsSince(cutoffEpochMs: Long): Int
+
     @Update
     suspend fun update(entry: FoodEntryEntity): Int
 }

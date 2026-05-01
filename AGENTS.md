@@ -30,7 +30,9 @@ Kotlin 2.x: Follow standard conventions
 - Never run more than one Gradle build at a time on this machine. Before starting any `./gradlew ...` command, verify there is no other active Gradle wrapper build for the current user.
 - Use Conventional Commits / semantic commit messages for all commits in this repo. Prefer formats like `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`, `ci: ...`, and use `!` or `BREAKING CHANGE:` for breaking changes.
 - Local device connection details and Android SDK paths live in `.env.local` at the repo root.
+- The cloud upload backend that receives model-improvement photo uploads lives outside this repo at `~/zvaka-backend`; when changing client upload auth, keep the backend verifier in sync.
 - After making Android app changes, always install the app on a connected device if one is available. Use the SDK and device connection details from `.env.local` when needed.
 - Do not run local unit tests or instrumentation tests on this machine. Raise a PR and rely on GitHub Actions for test execution instead.
 - Local Android validation on this machine should be limited to install flows such as `cd android && ./gradlew installDebug`.
+- Prefer GitHub Actions for all release APK/AAB builds on this machine; avoid local `assembleRelease`, `bundleRelease`, or `installRelease` unless explicitly required.
 <!-- MANUAL ADDITIONS END -->
