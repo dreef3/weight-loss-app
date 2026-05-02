@@ -7,6 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.dreef3.weightlossapp.app.widget.HomeStatusWidgetUpdater
 import com.dreef3.weightlossapp.domain.usecase.EngineQueueState
 import com.dreef3.weightlossapp.domain.usecase.EngineTaskQueue
 import kotlinx.coroutines.flow.Flow
@@ -94,10 +95,11 @@ class WorkManagerEngineTaskQueue(
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
+        HomeStatusWidgetUpdater.requestRefresh(context)
     }
 
-    private companion object {
-        private const val UNIQUE_WORK_NAME = "persistent-engine-task-queue"
+    companion object {
+        const val UNIQUE_WORK_NAME = "persistent-engine-task-queue"
         private const val TAG_ENGINE_QUEUE = "engine-queue"
         private const val TAG_PHOTO_ESTIMATE = "engine-photo-estimate"
         private const val TAG_CHAT_REPLY = "engine-chat-reply"
