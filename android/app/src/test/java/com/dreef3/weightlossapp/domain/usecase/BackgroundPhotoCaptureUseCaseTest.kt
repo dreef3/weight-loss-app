@@ -12,6 +12,7 @@ import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -100,6 +101,8 @@ private class FakeScheduler : EngineTaskQueue {
         userVisibleText: String,
         actualPrompt: String,
     ) = Unit
+
+    override fun observeState(sessionId: Long?) = flowOf(EngineQueueState())
 }
 
 private class FakePhotoStorage : PhotoStorage(ContextWrapper(null)) {

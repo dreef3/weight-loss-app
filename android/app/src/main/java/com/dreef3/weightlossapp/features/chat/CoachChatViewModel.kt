@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -36,6 +37,7 @@ data class CoachChatUiState(
     val messages: List<DietChatMessage> = emptyList(),
     val input: String = "",
     val isSending: Boolean = false,
+    val isAwaitingAssistant: Boolean = false,
     val showOverviewSuggestion: Boolean = true,
     val readOnly: Boolean = false,
     val attachedImagePath: String? = null,
@@ -102,6 +104,12 @@ class CoachChatViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    private val queueState: StateFlow<Int> = currentSessionId
+        .flatMapLatest { activeSessionId ->
+            container.engineTaskQueue.observeState(activeSessionId).map { it.sessionPendingCount }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
     private val _uiState = kotlinx.coroutines.flow.MutableStateFlow(CoachChatUiState(readOnly = readOnly))
     val uiState: StateFlow<CoachChatUiState> = _uiState
 
@@ -114,9 +122,12 @@ class CoachChatViewModel(
             }
         }
         viewModelScope.launch {
-            persistedMessages.collect { messages ->
+            combine(persistedMessages, queueState) { messages, sessionPendingCount ->
+                messages to sessionPendingCount
+            }.collect { (messages, sessionPendingCount) ->
                 _uiState.value = _uiState.value.copy(
                     messages = if (messages.isEmpty()) defaultMessages() else messages,
+                    isAwaitingAssistant = sessionPendingCount > 0,
                     showOverviewSuggestion = !readOnly && messages.isEmpty() && !_uiState.value.isSending,
                 )
             }

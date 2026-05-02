@@ -20,6 +20,8 @@ import com.dreef3.weightlossapp.domain.repository.CoachChatRepository
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
 import com.dreef3.weightlossapp.domain.usecase.BackgroundPhotoCaptureUseCase
+import com.dreef3.weightlossapp.domain.usecase.EngineQueueState
+import com.dreef3.weightlossapp.domain.usecase.EngineTaskQueue
 import com.dreef3.weightlossapp.domain.usecase.PhotoProcessingScheduler
 import com.dreef3.weightlossapp.domain.usecase.SaveManualCaloriesUseCase
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,11 +80,12 @@ class TodaySummaryViewModelTest {
             summaryAggregator = SummaryAggregator(),
             backgroundPhotoCaptureUseCase = BackgroundPhotoCaptureUseCase(
                 repository = foodRepository,
-                scheduler = NoopPhotoScheduler(),
+                engineTaskQueue = NoopEngineTaskQueue(),
                 localDateProvider = LocalDateProvider(ZoneId.of("UTC")),
                 photoStorage = FakePhotoStorage(),
             ),
             saveManualCaloriesUseCase = SaveManualCaloriesUseCase(foodRepository),
+            engineTaskQueue = NoopEngineTaskQueue(),
         )
 
         foodRepository.entries.value = listOf(entry(date, 500), entry(date, 300))
@@ -113,6 +116,26 @@ class TodaySummaryViewModelTest {
 
 private class NoopPhotoScheduler : PhotoProcessingScheduler {
     override fun enqueue(entryId: Long, imagePath: String, capturedAtEpochMs: Long) = Unit
+}
+
+private class NoopEngineTaskQueue : EngineTaskQueue {
+    override fun enqueuePhotoEstimate(
+        entryId: Long,
+        imagePath: String,
+        capturedAtEpochMs: Long,
+        sessionId: Long?,
+        userVisibleText: String?,
+        preferredDescription: String?,
+    ) = Unit
+
+    override fun enqueueChatReply(
+        sessionId: Long,
+        triggerMessageId: Long,
+        userVisibleText: String,
+        actualPrompt: String,
+    ) = Unit
+
+    override fun observeState(sessionId: Long?) = kotlinx.coroutines.flow.flowOf(EngineQueueState())
 }
 
 private class FakePhotoStorage : PhotoStorage(ContextWrapper(null)) {
