@@ -11,6 +11,7 @@ import com.dreef3.weightlossapp.domain.model.DailySummary
 import com.dreef3.weightlossapp.domain.model.ConfirmationStatus
 import com.dreef3.weightlossapp.domain.model.FoodEntry
 import com.dreef3.weightlossapp.domain.model.FoodEntryStatus
+import com.dreef3.weightlossapp.domain.usecase.EngineTaskQueue
 import com.dreef3.weightlossapp.domain.repository.CoachChatRepository
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
@@ -46,6 +47,9 @@ data class TodaySummaryUiState(
     val isEmpty: Boolean = true,
     val errorMessage: String? = null,
     val processingCount: Int = 0,
+    val queuedTaskCount: Int = 0,
+    val queuedPhotoTaskCount: Int = 0,
+    val queuedChatTaskCount: Int = 0,
     val manualEntries: List<FoodEntry> = emptyList(),
     val historyItems: List<TodayHistoryItem> = emptyList(),
     val lastActionMessage: String? = null,
@@ -59,6 +63,7 @@ class TodaySummaryViewModel(
     summaryAggregator: SummaryAggregator,
     private val backgroundPhotoCaptureUseCase: BackgroundPhotoCaptureUseCase,
     private val saveManualCaloriesUseCase: SaveManualCaloriesUseCase,
+    engineTaskQueue: EngineTaskQueue,
 ) : ViewModel() {
     private val today = localDateProvider.today()
 
@@ -66,7 +71,8 @@ class TodaySummaryViewModel(
         profileRepository.observeBudgetPeriods(),
         foodEntryRepository.observeEntriesInRange(today.minusDays(29), today),
         coachChatRepository.observeSessionsInRange(today.minusDays(29), today),
-    ) { periods, entries, chatSessions ->
+        engineTaskQueue.observeState(),
+    ) { periods, entries, chatSessions, queueState ->
         val budget = periods
             .filter { it.effectiveFromDate <= today }
             .maxByOrNull { it.effectiveFromDate }
@@ -88,6 +94,9 @@ class TodaySummaryViewModel(
                 summary = summary,
                 isEmpty = summary.entryCount == 0,
                 processingCount = todayEntries.count { it.entryStatus == FoodEntryStatus.Processing && it.deletedAt == null },
+                queuedTaskCount = queueState.totalPendingCount,
+                queuedPhotoTaskCount = queueState.photoPendingCount,
+                queuedChatTaskCount = queueState.chatPendingCount,
                 manualEntries = todayEntries.filter { it.entryStatus == FoodEntryStatus.NeedsManual && it.deletedAt == null },
                 historyItems = buildList {
                     addAll(
@@ -158,6 +167,7 @@ class TodaySummaryViewModelFactory(
             summaryAggregator = container.summaryAggregator,
             backgroundPhotoCaptureUseCase = container.backgroundPhotoCaptureUseCase,
             saveManualCaloriesUseCase = container.saveManualCaloriesUseCase,
+            engineTaskQueue = container.engineTaskQueue,
         ) as T
     }
 }

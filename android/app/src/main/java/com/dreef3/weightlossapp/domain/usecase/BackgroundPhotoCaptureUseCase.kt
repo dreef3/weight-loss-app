@@ -12,11 +12,43 @@ import java.time.Instant
 
 class BackgroundPhotoCaptureUseCase(
     private val repository: FoodEntryRepository,
-    private val scheduler: PhotoProcessingScheduler,
+    private val engineTaskQueue: EngineTaskQueue,
     private val localDateProvider: LocalDateProvider,
     private val photoStorage: PhotoStorage,
 ) {
     suspend fun enqueue(imagePath: String, capturedAt: Instant): Long {
+        return enqueueInternal(
+            imagePath = imagePath,
+            capturedAt = capturedAt,
+            sessionId = null,
+            userVisibleText = null,
+            preferredDescription = null,
+        )
+    }
+
+    suspend fun enqueueFromChat(
+        imagePath: String,
+        capturedAt: Instant,
+        sessionId: Long,
+        userVisibleText: String,
+        preferredDescription: String?,
+    ): Long {
+        return enqueueInternal(
+            imagePath = imagePath,
+            capturedAt = capturedAt,
+            sessionId = sessionId,
+            userVisibleText = userVisibleText,
+            preferredDescription = preferredDescription,
+        )
+    }
+
+    private suspend fun enqueueInternal(
+        imagePath: String,
+        capturedAt: Instant,
+        sessionId: Long?,
+        userVisibleText: String?,
+        preferredDescription: String?,
+    ): Long {
         photoStorage.normalizePhoto(imagePath)
         val pendingEntry = FoodEntry(
             capturedAt = capturedAt,
@@ -25,17 +57,20 @@ class BackgroundPhotoCaptureUseCase(
             estimatedCalories = 0,
             finalCalories = 0,
             confidenceState = ConfidenceState.Failed,
-            detectedFoodLabel = null,
+            detectedFoodLabel = preferredDescription,
             confidenceNotes = "Processing photo in background.",
             confirmationStatus = ConfirmationStatus.NotRequired,
             source = FoodEntrySource.AiEstimate,
             entryStatus = FoodEntryStatus.Processing,
         )
         val entryId = repository.upsert(pendingEntry)
-        scheduler.enqueue(
+        engineTaskQueue.enqueuePhotoEstimate(
             entryId = entryId,
             imagePath = imagePath,
             capturedAtEpochMs = capturedAt.toEpochMilli(),
+            sessionId = sessionId,
+            userVisibleText = userVisibleText,
+            preferredDescription = preferredDescription,
         )
         return entryId
     }
@@ -46,17 +81,20 @@ class BackgroundPhotoCaptureUseCase(
             estimatedCalories = 0,
             finalCalories = 0,
             confidenceState = ConfidenceState.Failed,
-            detectedFoodLabel = null,
+            detectedFoodLabel = entry.detectedFoodLabel,
             confidenceNotes = "Retrying photo estimation in background.",
             confirmationStatus = ConfirmationStatus.NotRequired,
             source = FoodEntrySource.AiEstimate,
             entryStatus = FoodEntryStatus.Processing,
         )
         repository.upsert(retryingEntry)
-        scheduler.enqueue(
+        engineTaskQueue.enqueuePhotoEstimate(
             entryId = entry.id,
             imagePath = entry.imagePath,
             capturedAtEpochMs = entry.capturedAt.toEpochMilli(),
+            sessionId = null,
+            userVisibleText = null,
+            preferredDescription = entry.detectedFoodLabel,
         )
     }
 }

@@ -1,5 +1,6 @@
 package com.dreef3.weightlossapp.features.chat
 
+import android.Manifest
 import android.content.ClipData
 import android.graphics.BitmapFactory
 import android.widget.Toast
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.notifications.needsNotificationPermission
 import com.dreef3.weightlossapp.chat.ChatRole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,6 +79,15 @@ fun CoachChatScreenRoute(
         ),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { }
+    LaunchedEffect(Unit) {
+        if (!readOnly && needsNotificationPermission(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     CoachChatScreen(
         state = state,
         onInputChanged = viewModel::updateInput,
@@ -103,8 +114,8 @@ fun CoachChatScreen(
         uri?.let { onAttachImage(it.toString()) }
     }
 
-    LaunchedEffect(state.messages.size, state.isSending) {
-        val extraItems = if (state.isSending) 1 else 0
+    LaunchedEffect(state.messages.size, state.isSending, state.isAwaitingAssistant) {
+        val extraItems = if (state.isSending || state.isAwaitingAssistant) 1 else 0
         val targetIndex = (state.messages.size + extraItems - 1).coerceAtLeast(0)
         listState.animateScrollToItem(targetIndex)
     }
@@ -132,7 +143,7 @@ fun CoachChatScreen(
                     imagePath = message.imagePath,
                 )
             }
-            if (state.isSending) {
+            if (state.isSending || state.isAwaitingAssistant) {
                 item {
                     TypingBubble()
                 }

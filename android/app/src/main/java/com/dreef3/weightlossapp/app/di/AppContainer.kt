@@ -34,6 +34,7 @@ import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
 import com.dreef3.weightlossapp.domain.usecase.BackgroundPhotoCaptureUseCase
 import com.dreef3.weightlossapp.domain.usecase.ConfirmFoodEstimateUseCase
+import com.dreef3.weightlossapp.domain.usecase.EngineTaskQueue
 import com.dreef3.weightlossapp.domain.usecase.SaveManualCaloriesUseCase
 import com.dreef3.weightlossapp.domain.usecase.SaveUserProfileUseCase
 import com.dreef3.weightlossapp.domain.usecase.UpdateFoodEntryUseCase
@@ -41,7 +42,7 @@ import com.dreef3.weightlossapp.inference.CalorieEstimationModel
 import com.dreef3.weightlossapp.inference.FoodEstimationEngine
 import com.dreef3.weightlossapp.inference.LiteRtFoodEstimationEngine
 import com.dreef3.weightlossapp.inference.SelectableFoodEstimationEngine
-import com.dreef3.weightlossapp.work.WorkManagerPhotoProcessingScheduler
+import com.dreef3.weightlossapp.work.WorkManagerEngineTaskQueue
 
 class AppContainer private constructor(context: Context) {
     val appContext: Context = context
@@ -70,7 +71,7 @@ class AppContainer private constructor(context: Context) {
     val appDataBackupManager = AppDataBackupManager(context, database, preferences)
     val googleDriveSyncManager = GoogleDriveSyncManager(context, preferences, appDataBackupManager)
     val networkConnectionMonitor = NetworkConnectionMonitor(context)
-    val photoProcessingScheduler = WorkManagerPhotoProcessingScheduler(context)
+    val engineTaskQueue: EngineTaskQueue = WorkManagerEngineTaskQueue(context)
     val budgetCalculator = CalorieBudgetCalculator()
     val summaryAggregator = SummaryAggregator()
     val trendAggregator = TrendAggregator()
@@ -97,7 +98,7 @@ class AppContainer private constructor(context: Context) {
     val updateFoodEntryUseCase = UpdateFoodEntryUseCase(foodEntryRepository)
     val backgroundPhotoCaptureUseCase = BackgroundPhotoCaptureUseCase(
         repository = foodEntryRepository,
-        scheduler = photoProcessingScheduler,
+        engineTaskQueue = engineTaskQueue,
         localDateProvider = localDateProvider,
         photoStorage = photoStorage,
     )

@@ -21,7 +21,8 @@ import com.dreef3.weightlossapp.domain.model.UserProfile
 import com.dreef3.weightlossapp.domain.repository.FoodEntryRepository
 import com.dreef3.weightlossapp.domain.repository.ProfileRepository
 import com.dreef3.weightlossapp.domain.usecase.BackgroundPhotoCaptureUseCase
-import com.dreef3.weightlossapp.domain.usecase.PhotoProcessingScheduler
+import com.dreef3.weightlossapp.domain.usecase.EngineQueueState
+import com.dreef3.weightlossapp.domain.usecase.EngineTaskQueue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,7 +81,7 @@ class TrendsViewModelTest {
             trendAggregator = TrendAggregator(),
             backgroundPhotoCaptureUseCase = BackgroundPhotoCaptureUseCase(
                 repository = TrendsFakeFoodEntryRepository(entries),
-                scheduler = NoopTrendPhotoScheduler(),
+                engineTaskQueue = NoopTrendEngineTaskQueue(),
                 localDateProvider = LocalDateProvider(ZoneId.of("UTC")),
                 photoStorage = FakePhotoStorage(),
             ),
@@ -196,6 +197,22 @@ private class TrendsFakeProfileRepository(
         flow.value.filter { it.effectiveFromDate <= date }.maxByOrNull { it.effectiveFromDate }
 }
 
-private class NoopTrendPhotoScheduler : PhotoProcessingScheduler {
-    override fun enqueue(entryId: Long, imagePath: String, capturedAtEpochMs: Long) = Unit
+private class NoopTrendEngineTaskQueue : EngineTaskQueue {
+    override fun enqueuePhotoEstimate(
+        entryId: Long,
+        imagePath: String,
+        capturedAtEpochMs: Long,
+        sessionId: Long?,
+        userVisibleText: String?,
+        preferredDescription: String?,
+    ) = Unit
+
+    override fun enqueueChatReply(
+        sessionId: Long,
+        triggerMessageId: Long,
+        userVisibleText: String,
+        actualPrompt: String,
+    ) = Unit
+
+    override fun observeState(sessionId: Long?) = kotlinx.coroutines.flow.flowOf(EngineQueueState())
 }

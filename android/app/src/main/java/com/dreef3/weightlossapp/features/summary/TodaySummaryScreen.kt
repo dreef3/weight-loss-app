@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -50,6 +51,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dreef3.weightlossapp.app.di.AppContainer
+import com.dreef3.weightlossapp.app.notifications.needsNotificationPermission
 import com.dreef3.weightlossapp.chat.CoachChatSession
 import com.dreef3.weightlossapp.domain.model.FoodEntry
 import java.time.LocalDate
@@ -68,8 +70,17 @@ fun TodaySummaryScreenRoute(
     val viewModel: TodaySummaryViewModel = viewModel(factory = TodaySummaryViewModelFactory(container))
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { }
     var manualEntryTarget by remember { mutableStateOf<FoodEntry?>(null) }
     var pendingPhotoPath by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        if (needsNotificationPermission(context)) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
@@ -167,11 +178,20 @@ fun TodaySummaryScreen(
                 item {
                     state.errorMessage?.let { Text(it) }
                 }
-                if (state.processingCount > 0) {
+                if (state.processingCount > 0 || state.queuedTaskCount > 0) {
                     item {
+                        val photoCount = maxOf(state.processingCount, state.queuedPhotoTaskCount)
+                        val totalCount = maxOf(photoCount + state.queuedChatTaskCount, state.queuedTaskCount)
                         StatusCard(
                             title = "Processing in background",
-                            body = "${state.processingCount} photo(s) are still being estimated. You can close the app and come back later.",
+                            body = when {
+                                photoCount > 0 && state.queuedChatTaskCount > 0 ->
+                                    "${countLabel(totalCount, "queued task")} in progress: ${countLabel(photoCount, "photo estimate")} and ${countLabel(state.queuedChatTaskCount, "chat reply task")}. You can close the app and come back later."
+                                photoCount > 0 ->
+                                    "${countLabel(photoCount, "photo estimate")} ${if (photoCount == 1) "is" else "are"} still being processed. You can close the app and come back later."
+                                else ->
+                                    "${countLabel(state.queuedChatTaskCount, "chat reply task")} ${if (state.queuedChatTaskCount == 1) "is" else "are"} still queued in the background. You can close the app and come back later."
+                            },
                         )
                     }
                 }
@@ -219,7 +239,7 @@ fun TodaySummaryScreen(
                         }
                     }
                 }
-                if (state.isEmpty && state.processingCount == 0 && state.manualEntries.isEmpty()) {
+                if (state.isEmpty && state.processingCount == 0 && state.queuedTaskCount == 0 && state.manualEntries.isEmpty()) {
                     item {
                         SummaryEmptyState()
                     }
@@ -241,6 +261,13 @@ fun TodaySummaryScreen(
         )
     }
 }
+
+private fun countLabel(count: Int, singular: String): String =
+    if (count == 1) {
+        "1 $singular"
+    } else {
+        "$count ${singular}s"
+    }
 
 private fun LocalDate.toSectionLabel(): String {
     val today = LocalDate.now()
