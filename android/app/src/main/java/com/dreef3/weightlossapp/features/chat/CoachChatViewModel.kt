@@ -11,13 +11,8 @@ import com.dreef3.weightlossapp.chat.ChatRole
 import com.dreef3.weightlossapp.chat.DietChatMessage
 import com.dreef3.weightlossapp.chat.DietChatSnapshot
 import com.dreef3.weightlossapp.chat.DietEntryContext
-import com.dreef3.weightlossapp.domain.model.ConfidenceState
 import com.dreef3.weightlossapp.domain.model.ConfirmationStatus
-import com.dreef3.weightlossapp.domain.model.FoodEntry
-import com.dreef3.weightlossapp.domain.model.FoodEntrySource
 import com.dreef3.weightlossapp.domain.model.FoodEntryStatus
-import com.dreef3.weightlossapp.inference.FoodEstimationException
-import com.dreef3.weightlossapp.inference.FoodEstimationRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -221,68 +216,38 @@ class CoachChatViewModel(
         )
 
         viewModelScope.launch(Dispatchers.IO) {
-            val sessionId = ensureWritableSessionId()
-            val userVisibleText = text.ifBlank { "Attached a food photo for calorie estimate." }
-            container.coachChatRepository.appendMessage(
-                sessionId = sessionId,
-                role = ChatRole.User,
-                text = userVisibleText,
-                createdAtEpochMs = System.currentTimeMillis(),
-                imagePath = imagePath,
-            )
-            val capturedAt = Instant.now()
-            val estimation = container.foodEstimationEngine.estimate(
-                FoodEstimationRequest(
+            runCatching {
+                val sessionId = ensureWritableSessionId()
+                val userVisibleText = text.ifBlank { "Attached a food photo for calorie estimate." }
+                container.coachChatRepository.appendMessage(
+                    sessionId = sessionId,
+                    role = ChatRole.User,
+                    text = userVisibleText,
+                    createdAtEpochMs = System.currentTimeMillis(),
                     imagePath = imagePath,
-                    capturedAtEpochMs = capturedAt.toEpochMilli(),
-                    userContext = text.takeIf { it.isNotBlank() },
+                )
+                container.backgroundPhotoCaptureUseCase.enqueueFromChat(
+                    imagePath = imagePath,
+                    capturedAt = Instant.now(),
+                    sessionId = sessionId,
+                    userVisibleText = userVisibleText,
                     preferredDescription = text.takeIf { it.isNotBlank() },
-                ),
-            )
-            val reply = estimation.fold(
-                onSuccess = { result ->
-                    if (result.confidenceState == ConfidenceState.High) {
-                        val description = text.takeIf { it.isNotBlank() }
-                            ?: result.detectedFoodLabel
-                            ?: "Meal photo"
-                        container.updateFoodEntryUseCase(
-                            FoodEntry(
-                                capturedAt = capturedAt,
-                                entryDate = container.localDateProvider.dateFor(capturedAt),
-                                imagePath = imagePath,
-                                estimatedCalories = result.estimatedCalories,
-                                finalCalories = result.estimatedCalories,
-                                confidenceState = result.confidenceState,
-                                detectedFoodLabel = description,
-                                confidenceNotes = result.confidenceNotes,
-                                confirmationStatus = ConfirmationStatus.NotRequired,
-                                source = FoodEntrySource.AiEstimate,
-                                entryStatus = FoodEntryStatus.Ready,
-                                debugInteractionLog = result.debugInteractionLog,
-                            ),
-                        )
-                        "Logged $description at ${result.estimatedCalories} kcal."
-                    } else {
-                        saveManualPhotoEntry(capturedAt, imagePath, text, result.debugInteractionLog)
-                    }
-                },
-                onFailure = { throwable ->
-                    saveManualPhotoEntry(
-                        capturedAt = capturedAt,
-                        imagePath = imagePath,
-                        userText = text,
-                        debugTrace = (throwable as? FoodEstimationException)?.debugInteractionLog,
+                )
+            }.onFailure { throwable ->
+                Log.e(TAG, "sendAttachedPhoto failed", throwable)
+                runCatching {
+                    val sessionId = ensureWritableSessionId()
+                    val fallback = "I couldn't queue that photo right now. Please try again."
+                    container.coachChatRepository.appendMessage(
+                        sessionId = sessionId,
+                        role = ChatRole.Assistant,
+                        text = fallback,
+                        createdAtEpochMs = System.currentTimeMillis(),
+                        imagePath = null,
                     )
-                },
-            )
-            container.coachChatRepository.appendMessage(
-                sessionId = sessionId,
-                role = ChatRole.Assistant,
-                text = reply,
-                createdAtEpochMs = System.currentTimeMillis(),
-                imagePath = null,
-            )
-            container.coachChatRepository.updateSessionSummary(sessionId, summarizeConversation(reply, userVisibleText))
+                    container.coachChatRepository.updateSessionSummary(sessionId, summarizeConversation(fallback, text))
+                }
+            }
             _uiState.value = _uiState.value.copy(
                 isSending = false,
                 showOverviewSuggestion = false,
@@ -305,32 +270,20 @@ class CoachChatViewModel(
             runCatching {
                 val sessionId = ensureWritableSessionId()
                 val userMessageTime = System.currentTimeMillis()
-                container.coachChatRepository.appendMessage(
+                val triggerMessageId = container.coachChatRepository.appendMessage(
                     sessionId = sessionId,
                     role = ChatRole.User,
                     text = userVisibleText,
                     createdAtEpochMs = userMessageTime,
                     imagePath = null,
                 )
-                val history = container.coachChatRepository.getMessages(sessionId)
-                val response = container.dietChatEngine.sendMessage(
-                    message = actualPrompt,
-                    history = history,
-                    snapshot = snapshotState.value,
-                ).getOrElse {
-                    Log.e(TAG, "dietChatEngine returned failure", it)
-                    "I couldn't answer that yet. Try again in a moment."
-                }
-                val assistantTime = System.currentTimeMillis()
-                container.coachChatRepository.appendMessage(
+                container.engineTaskQueue.enqueueChatReply(
                     sessionId = sessionId,
-                    role = ChatRole.Assistant,
-                    text = response,
-                    createdAtEpochMs = assistantTime,
-                    imagePath = null,
+                    triggerMessageId = triggerMessageId,
+                    userVisibleText = userVisibleText,
+                    actualPrompt = actualPrompt,
                 )
-                container.coachChatRepository.updateSessionSummary(sessionId, summarizeConversation(response, history.lastOrNull()?.text))
-                debugLog("assistant response chars=${response.length}")
+                debugLog("queued assistant response for session=$sessionId triggerMessageId=$triggerMessageId")
             }.onFailure { throwable ->
                 Log.e(TAG, "sendMessage flow failed", throwable)
                 runCatching {
@@ -562,31 +515,6 @@ class CoachChatViewModel(
 
     companion object {
         private const val TAG = "CoachChat"
-    }
-
-    private suspend fun saveManualPhotoEntry(
-        capturedAt: Instant,
-        imagePath: String,
-        userText: String,
-        debugTrace: String?,
-    ): String {
-        container.updateFoodEntryUseCase(
-            FoodEntry(
-                capturedAt = capturedAt,
-                entryDate = container.localDateProvider.dateFor(capturedAt),
-                imagePath = imagePath,
-                estimatedCalories = 0,
-                finalCalories = 0,
-                confidenceState = ConfidenceState.Failed,
-                detectedFoodLabel = userText.takeIf { it.isNotBlank() },
-                confidenceNotes = "Could not estimate calories automatically. Enter them manually.",
-                confirmationStatus = ConfirmationStatus.NotRequired,
-                source = FoodEntrySource.AiEstimate,
-                entryStatus = FoodEntryStatus.NeedsManual,
-                debugInteractionLog = debugTrace,
-            ),
-        )
-        return "I saved the photo, but automatic estimation wasn't reliable enough. Open Today and enter calories manually."
     }
 }
 

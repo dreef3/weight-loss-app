@@ -27,7 +27,7 @@ class BackgroundPhotoCaptureUseCaseTest {
         val scheduler = FakeScheduler()
         val useCase = BackgroundPhotoCaptureUseCase(
             repository = repository,
-            scheduler = scheduler,
+            engineTaskQueue = scheduler,
             localDateProvider = LocalDateProvider(ZoneId.of("UTC")),
             photoStorage = FakePhotoStorage(),
         )
@@ -39,7 +39,7 @@ class BackgroundPhotoCaptureUseCaseTest {
         assertEquals(1, repository.savedEntries.size)
         assertEquals(FoodEntryStatus.Processing, repository.savedEntries.single().entryStatus)
         assertEquals("Processing photo in background.", repository.savedEntries.single().confidenceNotes)
-        assertTrue(scheduler.enqueued)
+        assertTrue(scheduler.photoEnqueued)
         assertEquals(entryId, scheduler.entryId)
         assertEquals("/tmp/meal.jpg", scheduler.imagePath)
     }
@@ -76,16 +76,30 @@ private class FakeRepository : FoodEntryRepository {
     override suspend fun delete(entry: FoodEntry) = Unit
 }
 
-private class FakeScheduler : PhotoProcessingScheduler {
-    var enqueued = false
+private class FakeScheduler : EngineTaskQueue {
+    var photoEnqueued = false
     var entryId: Long = 0
     var imagePath: String? = null
 
-    override fun enqueue(entryId: Long, imagePath: String, capturedAtEpochMs: Long) {
-        enqueued = true
+    override fun enqueuePhotoEstimate(
+        entryId: Long,
+        imagePath: String,
+        capturedAtEpochMs: Long,
+        sessionId: Long?,
+        userVisibleText: String?,
+        preferredDescription: String?,
+    ) {
+        photoEnqueued = true
         this.entryId = entryId
         this.imagePath = imagePath
     }
+
+    override fun enqueueChatReply(
+        sessionId: Long,
+        triggerMessageId: Long,
+        userVisibleText: String,
+        actualPrompt: String,
+    ) = Unit
 }
 
 private class FakePhotoStorage : PhotoStorage(ContextWrapper(null)) {
